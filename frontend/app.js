@@ -35,6 +35,7 @@ if (passwordScreen) {
     const savedToken = sessionStorage.getItem('blind_auth');
     if (savedToken === 'ok') {
         passwordScreen.classList.add('hidden');
+        langScreen.classList.remove('hidden');
     }
 
     passwordSubmit.addEventListener('click', async () => {
@@ -45,6 +46,7 @@ if (passwordScreen) {
         if (ok) {
             sessionStorage.setItem('blind_auth', 'ok');
             passwordScreen.classList.add('hidden');
+            langScreen.classList.remove('hidden');
         } else {
             passwordError.classList.remove('hidden');
             passwordInput.value = '';
