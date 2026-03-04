@@ -259,16 +259,19 @@ body {
   inset: 0;
   z-index: 95;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background: radial-gradient(circle at 50% 10%, #25205a 0%, #0a0a1a 58%, #050510 100%);
 }
 
 #mode-container {
   text-align: center;
-  padding: 28px;
+  padding: calc(76px + env(safe-area-inset-top, 0px)) 14px calc(16px + env(safe-area-inset-bottom, 0px));
   max-width: 520px;
   width: 100%;
+  margin: 0 auto;
 }
 
 #mode-icon {
@@ -415,6 +418,13 @@ body {
   color: #fff4cc;
   border-left: 3px solid #ffab00;
   padding-left: 9px;
+  max-height: 30vh;
+  overflow-y: auto;
+  word-break: break-word;
+}
+
+#mode-buttons.custom-only {
+  margin-bottom: 10px;
 }
 
 /* ============ MAIN APP ============ */
@@ -960,7 +970,28 @@ body {
 
 /* ============ RESPONSIVE ============ */
 
+@media (max-width: 767px) {
+  #mode-screen {
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+
+  #mode-subtitle {
+    margin-bottom: 14px;
+  }
+
+  #mode-continue-btn {
+    position: sticky;
+    bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+    z-index: 2;
+  }
+}
+
 @media (min-width: 480px) {
+  #mode-container {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+
   #guidance-text {
     font-size: 32px;
   }
@@ -973,6 +1004,15 @@ body {
 }
 
 @media (min-width: 768px) {
+  #mode-screen {
+    align-items: center;
+  }
+
+  #mode-container {
+    padding-top: 28px;
+    padding-bottom: 28px;
+  }
+
   #guidance-text {
     font-size: 38px;
   }

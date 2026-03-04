@@ -16,6 +16,7 @@ const LONG_PRESS_HINT_MS = 650;
 // --- DOM Elements ---
 const langScreen = document.getElementById('lang-screen');
 const modeScreen = document.getElementById('mode-screen');
+const modeButtonsContainer = document.getElementById('mode-buttons');
 const modeButtons = document.querySelectorAll('.mode-btn');
 const modeContinueBtn = document.getElementById('mode-continue-btn');
 const modeBadge = document.getElementById('mode-badge');
@@ -73,6 +74,7 @@ const statElapsed = document.getElementById('stat-elapsed');
 // --- State ---
 let selectedLang = 'en';
 let selectedMode = 'navigation';
+let lastNonCustomMode = 'navigation';
 let clipDurationMs = 4000;
 let isRunning = false;
 let mediaStream = null;
@@ -338,6 +340,19 @@ function getCustomRecordButtonIdleText() {
 function updateCustomModeUI() {
     if (!customModeConfig || !customModeStatus || !customModePreview) return;
     const isCustom = selectedMode === 'custom';
+
+    if (modeButtonsContainer) {
+        modeButtonsContainer.classList.toggle('custom-only', isCustom);
+    }
+    modeButtons.forEach((button) => {
+        const isCustomButton = (button.dataset.mode || '') === 'custom';
+        const shouldHide = isCustom && !isCustomButton;
+        button.classList.toggle('hidden', shouldHide);
+        button.setAttribute('aria-hidden', shouldHide ? 'true' : 'false');
+        if (shouldHide) button.setAttribute('tabindex', '-1');
+        else button.removeAttribute('tabindex');
+    });
+
     customModeConfig.classList.toggle('hidden', !isCustom);
     if (!isCustom) return;
     if (customModeRecordBtn && !customModeRecording) {
@@ -394,6 +409,9 @@ modeButtons.forEach(btn => {
         modeButtons.forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         selectedMode = btn.dataset.mode || 'navigation';
+        if (selectedMode !== 'custom') {
+            lastNonCustomMode = selectedMode;
+        }
         updateCustomModeUI();
         updateModeBadge();
     });
@@ -1069,6 +1087,17 @@ clearHistoryBtn.addEventListener('click', clearHistory);
 if (navBackBtn) {
     navBackBtn.addEventListener('click', () => {
         stopSpeaking();
+        if (currentScreen === 'mode' && selectedMode === 'custom') {
+            // First back step in mode screen: exit custom-only view and show all modes again.
+            selectedMode = lastNonCustomMode || 'navigation';
+            modeButtons.forEach((button) => {
+                const mode = button.dataset.mode || 'navigation';
+                button.classList.toggle('active', mode === selectedMode);
+            });
+            updateCustomModeUI();
+            updateModeBadge();
+            return;
+        }
         navigateBack();
     });
 }

@@ -1,103 +1,109 @@
-# Deployment Guide — Blind Guidance
+# Deployment Guide - Blind Guidance
 
 ## Architecture
 
+```text
+GitHub (main) -> GitHub Actions -> VPS
+                               |- nginx :8443 (HTTPS)
+                               |    |- /      -> frontend/ (static)
+                               |    \- /api/  -> proxy_pass -> 127.0.0.1:6111
+                               \- node server.js :6111 (systemd: blind-guidance)
 ```
-GitHub (main) → GitHub Actions → VPS (ubuntu@51.38.33.149)
-                                   ├── nginx :8443 SSL (blind-guidance-8443)
-                                   │     ├── / → frontend/ (static HTML/JS/CSS)
-                                   │     └── /api/ → proxy_pass → :6111
-                                   └── node server.js :6111 (blind-guidance.service)
-```
 
-> ⚠️ Port 6000 était bloqué par les navigateurs (ERR_UNSAFE_PORT).
-> Port 8443 est un port HTTPS safe reconnu par tous les navigateurs.
+Note:
+- Le port public est `8443` (HTTPS).
+- Le backend Node reste interne en `127.0.0.1:6111`.
 
-## Mapping des ports sur le VPS
+## Ports (VPS)
 
-| App            | Frontend public | Backend interne      |
-|----------------|-----------------|----------------------|
-| Studio Creatif | :7000           | 127.0.0.1:8000       |
-| Voxtral        | :5000           | 127.0.0.1:5111       |
-| **Blind Guidance** | **:8443 HTTPS** | **127.0.0.1:6111** |
+| Service | Port |
+|---|---|
+| Frontend public (Nginx HTTPS) | `:8443` |
+| Backend Node interne | `127.0.0.1:6111` |
 
-## Ce qui est AUTOMATIQUE (GitHub Actions)
+## Deploiement automatique (GitHub Actions)
 
-Chaque `git push` sur `main` déclenche `.github/workflows/deploy.yml` :
+Chaque `git push` sur `main` declenche `.github/workflows/deploy.yml`:
 
-1. **Upload** des fichiers via `scp` : `backend/`, `frontend/`, `nginx.conf`, `blind-guidance.service`
-2. **Sur le VPS** via SSH :
-   - `npm install --omit=dev`
-   - Configure nginx sur `:8443` SSL
-   - Installe/redémarre `blind-guidance.service`
-   - Smoke tests
+1. Upload via `scp`: `backend/`, `frontend/`, `nginx.conf`, `blind-guidance.service`
+2. Actions distantes:
+   - `npm install --omit=dev` dans `backend`
+   - mise a jour Nginx (`blind-guidance-8443`)
+   - reload Nginx
+   - installation/restart du service `blind-guidance`
+   - smoke test
 
-### Ce qui N'EST PAS écrasé :
-- **`backend/.env`** — jamais copié, reste intact sur le VPS
-- **Certificats SSL** — gérés par Let's Encrypt
+Ce qui n'est pas ecrase:
+- `backend/.env` (non copie par le workflow)
+- certificats Let's Encrypt
 
-## Setup initial (une seule fois)
+## Secrets GitHub requis
 
-### 1. Secrets GitHub à configurer
+Configurer dans `Settings > Secrets and variables > Actions`:
 
-Dans `https://github.com/TON_USER/blind-guidance/settings/secrets/actions` → ajouter :
+| Secret | Description |
+|---|---|
+| `VPS_IP` | IP du VPS |
+| `VPS_USER` | utilisateur SSH (ex: `ubuntu`) |
+| `VPS_PASSWORD` | mot de passe SSH du user |
 
-| Secret        | Valeur                          |
-|---------------|---------------------------------|
-| `VPS_HOST`    | `51.38.33.149`                  |
-| `VPS_USER`    | `ubuntu`                        |
-| `VPS_SSH_KEY` | Contenu de ta clé SSH privée    |
+Important:
+- Le workflow actuel utilise mot de passe (`sshpass`), pas de cle SSH.
 
-> Ces secrets existent déjà si tu les as créés pour studio-creatif-ai ou voxtral.
-> Vérifie juste qu'ils s'appellent exactement pareil.
+## Setup initial VPS
 
-### 2. Premier déploiement sur le VPS
+1. Se connecter au VPS:
 
 ```bash
-# Se connecter au VPS
-ssh ubuntu@51.38.33.149
+ssh ubuntu@<VPS_IP>
+```
 
-# Lancer le script de setup (après le premier push GitHub Actions)
+2. Lancer le script:
+
+```bash
 bash ~/blind-guidance/setup_vps.sh
+```
 
-# Créer le .env avec ta clé Gemini
+3. Configurer `backend/.env`:
+
+```bash
 nano ~/blind-guidance/backend/.env
 ```
 
-Contenu du `.env` :
+Exemple:
+
 ```env
 PORT=6111
-GEMINI_API_KEY=ta_cle_gemini_ici
+GEMINI_API_KEY=ta_cle_gemini
+APP_PASSWORD=mot_de_passe_optionnel
 ```
 
-### 3. Vérification
+## Verification
 
 ```bash
 sudo systemctl status blind-guidance --no-pager
-curl -I http://127.0.0.1:6000/
-curl -I http://51.38.33.149:6000/
-sudo ss -tulpen | grep -E ':6000|:6111'
+curl -I http://127.0.0.1:6111/api/health
+curl -kI https://<VPS_IP>:8443/
+sudo ss -tulpen | grep -E ':8443|:6111'
 sudo nginx -t
 ```
 
 ## Workflow quotidien
 
-```
-1. Modifier le code localement
-2. git add + git commit + git push origin main
-3. GitHub Actions déploie automatiquement
-4. Vérifier sur http://51.38.33.149:6000
-```
+1. Modifier le code localement.
+2. `git add`, `git commit`, `git push origin main`.
+3. GitHub Actions deploie automatiquement.
+4. Verifier l'application sur `https://<VPS_IP>:8443`.
 
 ## Logs et debug
 
 ```bash
-# Logs du backend
+# Backend (systemd)
 sudo journalctl -u blind-guidance -n 100 --no-pager
 
-# Redémarrer manuellement
+# Restart backend
 sudo systemctl restart blind-guidance
 
-# Logs nginx
+# Nginx errors
 sudo tail -50 /var/log/nginx/error.log
 ```

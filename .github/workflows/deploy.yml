@@ -67,5 +67,5 @@ jobs:
             sudo systemctl status blind-guidance --no-pager
 
             echo "🧪 Smoke tests..."
-            curl -sf http://127.0.0.1:6000/ -o /dev/null && echo "✅ Frontend OK on :6000" || echo "⚠️ Frontend not yet ready"
+            curl -ksf https://127.0.0.1:8443/ -o /dev/null && echo "✅ Frontend OK on :8443" || echo "⚠️ Frontend not yet ready"
             echo "✅ Deployment complete!"
