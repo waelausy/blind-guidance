@@ -19,8 +19,20 @@
 
 <body>
 
+  <!-- ====== PASSWORD SCREEN ====== -->
+  <div id="password-screen">
+    <div id="password-container">
+      <div id="password-icon">🔐</div>
+      <h1 id="password-title">Blind Guide AI</h1>
+      <p id="password-subtitle">Enter access password</p>
+      <input type="password" id="password-input" placeholder="Password" autocomplete="off" />
+      <button id="password-submit">Access →</button>
+      <p id="password-error" class="hidden">❌ Incorrect password</p>
+    </div>
+  </div>
+
   <!-- ====== LANGUAGE SELECTION SCREEN ====== -->
-  <div id="lang-screen">
+  <div id="lang-screen" class="hidden">
     <div id="lang-container">
       <div id="lang-icon">🦯</div>
       <h1 id="lang-title">Blind Guide AI</h1>

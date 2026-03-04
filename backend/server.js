@@ -342,6 +342,15 @@ app.post('/api/talk', upload.single('audio'), async (req, res) => {
     }
 });
 
+// Auth — password gate
+app.post('/api/auth', (req, res) => {
+    const { password } = req.body || {};
+    const APP_PASSWORD = process.env.APP_PASSWORD || '';
+    if (!APP_PASSWORD) return res.status(200).json({ ok: true }); // no password set = open
+    if (password === APP_PASSWORD) return res.status(200).json({ ok: true });
+    return res.status(401).json({ ok: false });
+});
+
 // Reset context
 app.post('/api/reset', (req, res) => {
     contextHistory = [];

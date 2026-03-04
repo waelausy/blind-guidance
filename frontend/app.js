@@ -12,6 +12,50 @@
 const API_BASE = window.location.origin;
 const MAX_HISTORY_DISPLAY = 8;
 
+// --- Password Gate ---
+const passwordScreen = document.getElementById('password-screen');
+const passwordInput = document.getElementById('password-input');
+const passwordSubmit = document.getElementById('password-submit');
+const passwordError = document.getElementById('password-error');
+
+async function checkPassword(pwd) {
+    try {
+        const res = await fetch(`${API_BASE}/api/auth`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: pwd }),
+        });
+        return res.ok;
+    } catch (e) {
+        return false;
+    }
+}
+
+if (passwordScreen) {
+    const savedToken = sessionStorage.getItem('blind_auth');
+    if (savedToken === 'ok') {
+        passwordScreen.classList.add('hidden');
+    }
+
+    passwordSubmit.addEventListener('click', async () => {
+        const pwd = passwordInput.value.trim();
+        if (!pwd) return;
+        unlockAudio();
+        const ok = await checkPassword(pwd);
+        if (ok) {
+            sessionStorage.setItem('blind_auth', 'ok');
+            passwordScreen.classList.add('hidden');
+        } else {
+            passwordError.classList.remove('hidden');
+            passwordInput.value = '';
+        }
+    });
+
+    passwordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') passwordSubmit.click();
+    });
+}
+
 // --- DOM Elements ---
 const langScreen = document.getElementById('lang-screen');
 const appScreen = document.getElementById('app');
@@ -78,6 +122,21 @@ const langToRVVoice = {
 // Voice enabled by default
 let voiceEnabled = true;
 let ttsVoices = [];
+let audioCtx = null;
+
+// Unlock AudioContext on first user gesture (required on iOS/Chrome HTTPS)
+function unlockAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+    // Silent utterance to unlock SpeechSynthesis on iOS
+    const silent = new SpeechSynthesisUtterance(' ');
+    silent.volume = 0;
+    window.speechSynthesis.speak(silent);
+}
 
 // Load voices (they load asynchronously in browsers)
 function loadVoices() {
@@ -146,6 +205,7 @@ function stopSpeaking() {
 langButtons.forEach(btn => {
     btn.addEventListener('click', () => {
         selectedLang = btn.dataset.lang;
+        unlockAudio();
         langScreen.classList.add('hidden');
         appScreen.classList.remove('hidden');
         initCamera();
@@ -575,7 +635,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // --- Event Listeners ---
-startBtn.addEventListener('click', toggleRunning);
+startBtn.addEventListener('click', () => { unlockAudio(); toggleRunning(); });
 clearHistoryBtn.addEventListener('click', clearHistory);
 setupTalkButton();
 

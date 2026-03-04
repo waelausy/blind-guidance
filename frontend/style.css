@@ -50,6 +50,93 @@ body {
   display: none !important;
 }
 
+/* ============ PASSWORD SCREEN ============ */
+
+#password-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #0a0a1a 0%, #1a1040 50%, #0a0a1a 100%);
+}
+
+#password-container {
+  text-align: center;
+  padding: 32px;
+  max-width: 360px;
+  width: 100%;
+}
+
+#password-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  animation: float 3s ease-in-out infinite;
+}
+
+#password-title {
+  font-size: 32px;
+  font-weight: 900;
+  background: linear-gradient(135deg, #7c4dff, #40c4ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 8px;
+}
+
+#password-subtitle {
+  color: var(--text-secondary);
+  font-size: 16px;
+  margin-bottom: 24px;
+}
+
+#password-input {
+  width: 100%;
+  padding: 16px 20px;
+  font-size: 18px;
+  font-family: 'Inter', sans-serif;
+  background: var(--bg-glass);
+  border: 2px solid rgba(124, 77, 255, 0.3);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  text-align: center;
+  letter-spacing: 3px;
+  margin-bottom: 16px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#password-input:focus {
+  border-color: var(--accent);
+}
+
+#password-submit {
+  width: 100%;
+  padding: 16px;
+  font-size: 18px;
+  font-weight: 700;
+  font-family: 'Inter', sans-serif;
+  background: linear-gradient(135deg, var(--accent), #40c4ff);
+  border: none;
+  border-radius: var(--radius);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+}
+
+#password-submit:active {
+  opacity: 0.85;
+  transform: scale(0.98);
+}
+
+#password-error {
+  margin-top: 16px;
+  color: var(--color-danger);
+  font-size: 15px;
+  font-weight: 600;
+}
+
 /* ============ LANGUAGE SCREEN ============ */
 
 #lang-screen {
