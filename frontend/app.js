@@ -662,14 +662,23 @@ async function analyzeClip(blob) {
         // If user started talk while analysis was running, ignore this result.
         if (isTalkFlowActive || isTalking) return;
 
+        scanNumber++;
+        scanCount.textContent = scanNumber;
+
+        // If model decided nothing changed, skip UI update and TTS
+        if (data.shouldRespond === false) {
+            statusDot.className = 'active';
+            statusText.textContent = `Active — scan #${scanNumber} (no change)`;
+            if (data.stats) updateStats(data.stats);
+            return;
+        }
+
         updateGuidance(data);
         if (data.stats) updateStats(data.stats);
 
         // Speak the guidance
         speak(data.guidance);
 
-        scanNumber++;
-        scanCount.textContent = scanNumber;
         statusDot.className = 'active';
         statusText.textContent = `Active — scan #${scanNumber}`;
     } catch (err) {

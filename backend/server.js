@@ -93,11 +93,6 @@ function normalizeCustomInstruction(customInstructionRaw) {
     return clean.slice(0, 700);
 }
 
-function getModePromptByLang(mode, lang) {
-    const modePrompts = promptsData.modePrompts;
-    return modePrompts[mode]?.[lang] || modePrompts.navigation.en;
-}
-
 // --- System Prompts per Language ---
 function getSystemPrompt(lang, contextStr, clipDurationSecRaw, modeRaw, customInstructionRaw) {
     const lengthProfile = resolveLengthProfile(clipDurationSecRaw);
@@ -141,6 +136,10 @@ function getSystemPrompt(lang, contextStr, clipDurationSecRaw, modeRaw, customIn
                        .replace(/\{\{contextStr\}\}/g, contextStr);
                        
     return template;
+}
+
+function getAnalyzeSchema() {
+    return promptsData.analyzeSchema;
 }
 
 function getTalkPrompt(lang, modeRaw, customInstructionRaw) {
@@ -254,6 +253,8 @@ app.post('/api/analyze', upload.single('video'), async (req, res) => {
 
         const config = {
             thinkingConfig: { thinkingLevel: 'MINIMAL' },
+            responseMimeType: 'application/json',
+            responseJsonSchema: getAnalyzeSchema(),
         };
 
         const response = await ai.models.generateContent({
@@ -262,7 +263,7 @@ app.post('/api/analyze', upload.single('video'), async (req, res) => {
             contents,
         });
 
-        const guidance = response.text || 'Unable to analyze scene.';
+        const rawText = response.text || '{}';
         const usage = response.usageMetadata || {};
         const inputTokens = usage.promptTokenCount || 0;
         const outputTokens = usage.candidatesTokenCount || 0;
@@ -271,31 +272,38 @@ app.post('/api/analyze', upload.single('video'), async (req, res) => {
 
         const processingTime = Date.now() - reqStart;
 
-        // Add to context history
-        contextHistory.unshift({
-            timestamp: new Date().toLocaleTimeString(),
-            guidance: guidance.trim(),
-        });
-        if (contextHistory.length > MAX_CONTEXT_HISTORY) {
-            contextHistory = contextHistory.slice(0, MAX_CONTEXT_HISTORY);
+        // Parse structured JSON response
+        let shouldRespond = true;
+        let alertLevel = 'info';
+        let guidance = '';
+        try {
+            const parsed = JSON.parse(rawText.trim());
+            shouldRespond = parsed.shouldRespond !== false;
+            alertLevel = ['danger', 'warning', 'safe', 'info'].includes(parsed.alertLevel) ? parsed.alertLevel : 'info';
+            guidance = String(parsed.guidance || '').trim();
+        } catch (e) {
+            console.error('Failed to parse structured response, using raw:', e.message);
+            guidance = rawText.trim();
+            shouldRespond = true;
+        }
+
+        // Only add to context history when the model decided to respond
+        if (shouldRespond && guidance) {
+            contextHistory.unshift({
+                timestamp: new Date().toLocaleTimeString(),
+                guidance,
+            });
+            if (contextHistory.length > MAX_CONTEXT_HISTORY) {
+                contextHistory = contextHistory.slice(0, MAX_CONTEXT_HISTORY);
+            }
         }
 
         // Clean up
         fs.unlink(videoPath, () => { });
 
-        // Determine alert level
-        const upper = guidance.toUpperCase();
-        let alertLevel = 'info';
-        if (upper.includes('STOP') || upper.includes('DANGER') || upper.includes('قف') || upper.includes('خطر')) {
-            alertLevel = 'danger';
-        } else if (upper.includes('CAREFUL') || upper.includes('CAUTION') || upper.includes('WATCH') || upper.includes('WARNING') || upper.includes('ATTENTION') || upper.includes('انتبه')) {
-            alertLevel = 'warning';
-        } else if (upper.includes('CLEAR') || upper.includes('SAFE') || upper.includes('DÉGAGÉ') || upper.includes('واضح') || upper.includes('آمن')) {
-            alertLevel = 'safe';
-        }
-
         res.json({
-            guidance: guidance.trim(),
+            shouldRespond,
+            guidance,
             alertLevel,
             processingTimeMs: processingTime,
             contextSize: contextHistory.length,
