@@ -230,6 +230,169 @@ body {
   text-align: left;
 }
 
+#mode-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 10%, #25205a 0%, #0a0a1a 58%, #050510 100%);
+}
+
+#mode-container {
+  text-align: center;
+  padding: 28px;
+  max-width: 520px;
+  width: 100%;
+}
+
+#mode-icon {
+  font-size: 56px;
+  margin-bottom: 12px;
+  animation: float 3s ease-in-out infinite;
+}
+
+#mode-title {
+  font-size: 30px;
+  font-weight: 900;
+  margin-bottom: 8px;
+}
+
+#mode-subtitle {
+  color: var(--text-secondary);
+  font-size: 15px;
+  margin-bottom: 20px;
+}
+
+#mode-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.mode-btn {
+  position: relative;
+  text-align: left;
+  width: 100%;
+  padding: 18px 18px 18px 20px;
+  border: 2px solid rgba(64, 196, 255, 0.22);
+  border-radius: var(--radius);
+  background: linear-gradient(130deg, rgba(64, 196, 255, 0.16), rgba(124, 77, 255, 0.16));
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+
+.mode-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, rgba(255, 255, 255, 0.09), transparent 55%);
+  pointer-events: none;
+}
+
+.mode-btn:hover,
+.mode-btn:active {
+  transform: scale(1.015);
+  border-color: #57d6ff;
+  box-shadow: 0 0 24px rgba(64, 196, 255, 0.32);
+}
+
+.mode-btn.active {
+  border-color: var(--color-safe);
+  box-shadow: 0 0 22px rgba(0, 230, 118, 0.4);
+  background: linear-gradient(130deg, rgba(0, 230, 118, 0.16), rgba(64, 196, 255, 0.18));
+}
+
+.mode-name {
+  display: block;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.15;
+  margin-bottom: 5px;
+}
+
+.mode-desc {
+  display: block;
+  font-size: 15px;
+  line-height: 1.25;
+  color: #d8e7ff;
+}
+
+#mode-continue-btn {
+  width: 100%;
+  padding: 16px;
+  border: none;
+  border-radius: var(--radius);
+  font-family: 'Inter', sans-serif;
+  font-size: 19px;
+  font-weight: 800;
+  color: #fff;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--accent), #40c4ff);
+}
+
+#mode-continue-btn:active {
+  transform: scale(0.98);
+}
+
+#custom-mode-config {
+  margin-bottom: 14px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(7, 18, 32, 0.62);
+  text-align: left;
+}
+
+#custom-mode-title {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8ee9ff;
+  margin-bottom: 8px;
+}
+
+#custom-mode-record-btn {
+  width: 100%;
+  border: 2px solid rgba(64, 196, 255, 0.4);
+  border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, rgba(64, 196, 255, 0.3), rgba(124, 77, 255, 0.35));
+  color: #ffffff;
+  font-family: 'Inter', sans-serif;
+  font-size: 16px;
+  font-weight: 800;
+  padding: 14px;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+
+#custom-mode-record-btn:active,
+#custom-mode-record-btn.recording {
+  border-color: #ffab00;
+  background: linear-gradient(135deg, rgba(255, 171, 0, 0.42), rgba(255, 87, 34, 0.5));
+  box-shadow: 0 0 18px rgba(255, 171, 0, 0.38);
+}
+
+#custom-mode-status {
+  font-size: 13px;
+  color: #d8e8ff;
+  line-height: 1.35;
+}
+
+#custom-mode-preview {
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.35;
+  color: #fff4cc;
+  border-left: 3px solid #ffab00;
+  padding-left: 9px;
+}
+
 /* ============ MAIN APP ============ */
 
 #app {
@@ -273,6 +436,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   padding: 8px 14px;
   background: var(--bg-glass);
   backdrop-filter: blur(20px);
@@ -334,6 +498,18 @@ body {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
+}
+
+#mode-badge {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  color: #8ae9ff;
+  background: rgba(64, 196, 255, 0.14);
+  border: 1px solid rgba(64, 196, 255, 0.35);
+  border-radius: 999px;
+  padding: 5px 8px;
+  text-transform: uppercase;
 }
 
 /* ============ DURATION BAR ============ */

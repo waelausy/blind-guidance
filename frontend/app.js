@@ -11,9 +11,18 @@
 
 const API_BASE = window.location.origin;
 const MAX_HISTORY_DISPLAY = 8;
+const LONG_PRESS_HINT_MS = 650;
 
 // --- DOM Elements ---
 const langScreen = document.getElementById('lang-screen');
+const modeScreen = document.getElementById('mode-screen');
+const modeButtons = document.querySelectorAll('.mode-btn');
+const modeContinueBtn = document.getElementById('mode-continue-btn');
+const modeBadge = document.getElementById('mode-badge');
+const customModeConfig = document.getElementById('custom-mode-config');
+const customModeRecordBtn = document.getElementById('custom-mode-record-btn');
+const customModeStatus = document.getElementById('custom-mode-status');
+const customModePreview = document.getElementById('custom-mode-preview');
 const appScreen = document.getElementById('app');
 const langButtons = document.querySelectorAll('.lang-btn');
 
@@ -62,6 +71,7 @@ const statElapsed = document.getElementById('stat-elapsed');
 
 // --- State ---
 let selectedLang = 'en';
+let selectedMode = 'navigation';
 let clipDurationMs = 4000;
 let isRunning = false;
 let mediaStream = null;
@@ -78,6 +88,20 @@ let audioChunks = [];
 let isTalking = false;
 let isTalkFlowActive = false;
 let currentAnalyzeController = null;
+let customModeInstruction = '';
+let customModeShortLabel = '';
+let customModeRawIntent = '';
+let customModeRecorder = null;
+let customModeChunks = [];
+let customModeRecording = false;
+let customModeAudioStream = null;
+
+const modeLabels = {
+    navigation: 'NAVIGATION',
+    reading: 'READING',
+    focus: 'FOCUS',
+    custom: 'CUSTOM',
+};
 
 // --- Voice Engine ---
 // Strategy: prefer Chrome/Android Google Neural voices (WaveNet quality)
@@ -232,16 +256,228 @@ function stopSpeaking() {
     }
 }
 
+function tByLang(texts) {
+    if (selectedLang === 'fr') return texts.fr;
+    if (selectedLang === 'ar') return texts.ar;
+    return texts.en;
+}
+
+function getCustomRecordButtonIdleText() {
+    return tByLang({
+        en: 'Hold To Record Goal',
+        fr: 'Maintenir pour enregistrer l\'objectif',
+        ar: 'اضغط مطولاً لتسجيل الهدف',
+    });
+}
+
+function updateCustomModeUI() {
+    if (!customModeConfig || !customModeStatus || !customModePreview) return;
+    const isCustom = selectedMode === 'custom';
+    customModeConfig.classList.toggle('hidden', !isCustom);
+    if (!isCustom) return;
+    if (customModeRecordBtn && !customModeRecording) {
+        customModeRecordBtn.textContent = getCustomRecordButtonIdleText();
+    }
+
+    if (customModeInstruction) {
+        customModeStatus.textContent = tByLang({
+            en: 'Custom objective ready. You can record again anytime.',
+            fr: 'Objectif personnalisé prêt. Vous pouvez réenregistrer à tout moment.',
+            ar: 'الهدف المخصص جاهز. يمكنك التسجيل مرة أخرى في أي وقت.',
+        });
+        customModePreview.classList.remove('hidden');
+        customModePreview.textContent = customModeInstruction;
+    } else {
+        customModeStatus.textContent = tByLang({
+            en: 'Hold the button and describe exactly what you want.',
+            fr: 'Maintenez le bouton et décrivez exactement ce que vous voulez.',
+            ar: 'اضغط مطولاً على الزر واشرح بالضبط ما تريده.',
+        });
+        customModePreview.classList.add('hidden');
+        customModePreview.textContent = '';
+    }
+}
+
+function updateModeBadge() {
+    if (!modeBadge) return;
+    const customLabel = customModeShortLabel ? customModeShortLabel.toUpperCase().slice(0, 18) : modeLabels.custom;
+    const label = selectedMode === 'custom'
+        ? customLabel
+        : (modeLabels[selectedMode] || modeLabels.navigation);
+    modeBadge.textContent = `MODE: ${label}`;
+}
+
+function startAppFlow() {
+    if (customModeAudioStream) {
+        customModeAudioStream.getTracks().forEach((track) => track.stop());
+        customModeAudioStream = null;
+    }
+    modeScreen.classList.add('hidden');
+    appScreen.classList.remove('hidden');
+    updateModeBadge();
+    initCamera();
+}
+
 // --- Language Selection ---
 langButtons.forEach(btn => {
     btn.addEventListener('click', () => {
         selectedLang = btn.dataset.lang;
         unlockAudio();
         langScreen.classList.add('hidden');
-        appScreen.classList.remove('hidden');
-        initCamera();
+        modeScreen.classList.remove('hidden');
+        updateCustomModeUI();
     });
 });
+
+modeButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+        modeButtons.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        selectedMode = btn.dataset.mode || 'navigation';
+        updateCustomModeUI();
+        updateModeBadge();
+    });
+});
+
+if (modeContinueBtn) {
+    modeContinueBtn.addEventListener('click', () => {
+        unlockAudio();
+        startAppFlow();
+    });
+}
+
+function getSupportedAudioMime() {
+    const audioMimeTypes = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4'];
+    for (const mime of audioMimeTypes) {
+        if (MediaRecorder.isTypeSupported(mime)) return mime;
+    }
+    return '';
+}
+
+async function ensureCustomAudioStream() {
+    if (customModeAudioStream) return customModeAudioStream;
+    customModeAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    return customModeAudioStream;
+}
+
+function startCustomModeRecording(e) {
+    if (e) e.preventDefault();
+    if (!customModeRecordBtn || selectedMode !== 'custom' || customModeRecording) return;
+    stopSpeaking();
+    unlockAudio();
+
+    (async () => {
+        try {
+            const stream = await ensureCustomAudioStream();
+            const selectedAudioMime = getSupportedAudioMime();
+            if (!selectedAudioMime) {
+                customModeStatus.textContent = tByLang({
+                    en: 'Audio recording is not supported on this browser.',
+                    fr: 'Enregistrement audio non supporté sur ce navigateur.',
+                    ar: 'تسجيل الصوت غير مدعوم في هذا المتصفح.',
+                });
+                return;
+            }
+
+            customModeRecorder = new MediaRecorder(stream, { mimeType: selectedAudioMime });
+            customModeChunks = [];
+            customModeRecording = true;
+            customModeRecordBtn.classList.add('recording');
+            customModeRecordBtn.textContent = tByLang({
+                en: 'Recording... Release to send',
+                fr: 'Enregistrement... Relâchez pour envoyer',
+                ar: 'جارٍ التسجيل... حرر للإرسال',
+            });
+            customModeStatus.textContent = tByLang({
+                en: 'Describe your exact goal in one clear sentence.',
+                fr: 'Décrivez votre objectif exact en une phrase claire.',
+                ar: 'اشرح هدفك بدقة في جملة واضحة واحدة.',
+            });
+
+            customModeRecorder.ondataavailable = (evt) => {
+                if (evt.data.size > 0) customModeChunks.push(evt.data);
+            };
+            customModeRecorder.onstop = async () => {
+                customModeRecording = false;
+                customModeRecordBtn.classList.remove('recording');
+                customModeRecordBtn.textContent = getCustomRecordButtonIdleText();
+                const audioBlob = new Blob(customModeChunks, { type: selectedAudioMime });
+                customModeChunks = [];
+                await sendCustomModeAudio(audioBlob);
+            };
+
+            customModeRecorder.start();
+        } catch (err) {
+            console.error('Custom mode record start error:', err);
+            customModeRecording = false;
+            customModeStatus.textContent = tByLang({
+                en: 'Microphone access is required for custom mode.',
+                fr: 'Accès micro requis pour le mode personnalisé.',
+                ar: 'إذن الميكروفون مطلوب للوضع المخصص.',
+            });
+        }
+    })();
+}
+
+function stopCustomModeRecording(e) {
+    if (e) e.preventDefault();
+    if (!customModeRecording || !customModeRecorder) return;
+    if (customModeRecorder.state === 'recording') {
+        customModeRecorder.stop();
+    }
+}
+
+async function sendCustomModeAudio(blob) {
+    if (!blob || blob.size === 0) return;
+    customModeStatus.textContent = tByLang({
+        en: 'Optimizing your custom mode...',
+        fr: 'Optimisation de votre mode personnalisé...',
+        ar: 'جارٍ تحسين وضعك المخصص...',
+    });
+
+    try {
+        const formData = new FormData();
+        formData.append('audio', blob, 'custom-mode.webm');
+        formData.append('lang', selectedLang);
+
+        const response = await fetch(`${API_BASE}/api/customize-mode`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!response.ok) throw new Error(`Server error: ${response.status}`);
+        const data = await response.json();
+
+        customModeInstruction = String(data.optimizedInstruction || '').trim();
+        customModeRawIntent = String(data.rawUserIntent || '').trim();
+        customModeShortLabel = String(data.shortLabel || '').trim();
+        if (!customModeInstruction) throw new Error('Empty optimized instruction');
+
+        updateModeBadge();
+        updateCustomModeUI();
+        speak(tByLang({
+            en: 'Custom mode saved.',
+            fr: 'Mode personnalisé enregistré.',
+            ar: 'تم حفظ الوضع المخصص.',
+        }));
+    } catch (err) {
+        console.error('Custom mode API error:', err);
+        customModeStatus.textContent = tByLang({
+            en: 'Could not build custom mode. Please try again.',
+            fr: 'Impossible de créer le mode personnalisé. Réessayez.',
+            ar: 'تعذر إنشاء الوضع المخصص. حاول مرة أخرى.',
+        });
+    }
+}
+
+function setupCustomModeVoiceButton() {
+    if (!customModeRecordBtn) return;
+    customModeRecordBtn.addEventListener('pointerdown', startCustomModeRecording);
+    customModeRecordBtn.addEventListener('pointerup', stopCustomModeRecording);
+    customModeRecordBtn.addEventListener('pointerleave', stopCustomModeRecording);
+    customModeRecordBtn.addEventListener('pointercancel', stopCustomModeRecording);
+    customModeRecordBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+}
 
 // --- Duration Selection ---
 durButtons.forEach(btn => {
@@ -348,6 +584,8 @@ async function analyzeClip(blob) {
         const formData = new FormData();
         formData.append('video', blob, 'clip.webm');
         formData.append('lang', selectedLang);
+        formData.append('mode', selectedMode);
+        formData.append('customInstruction', customModeInstruction);
         formData.append('clipDurationSec', String(Math.round(clipDurationMs / 1000)));
 
         const response = await fetch(`${API_BASE}/api/analyze`, {
@@ -543,6 +781,8 @@ async function sendTalkAudio(blob) {
         const formData = new FormData();
         formData.append('audio', blob, 'talk.webm');
         formData.append('lang', selectedLang);
+        formData.append('mode', selectedMode);
+        formData.append('customInstruction', customModeInstruction);
 
         const response = await fetch(`${API_BASE}/api/talk`, {
             method: 'POST',
@@ -618,9 +858,25 @@ async function start() {
     statusDot.className = 'active';
     statusText.textContent = 'Active — starting...';
 
-    guidanceText.textContent = selectedLang === 'fr' ? 'Analyse de l\'environnement...' :
-        selectedLang === 'ar' ? 'جاري تحليل البيئة...' :
-            'Scanning environment...';
+    if (selectedMode === 'reading') {
+        guidanceText.textContent = selectedLang === 'fr' ? 'Mode lecture activé. Montrez le texte à la caméra.' :
+            selectedLang === 'ar' ? 'تم تفعيل وضع القراءة. وجّه الكاميرا نحو النص.' :
+                'Reading mode enabled. Point camera to text.';
+    } else if (selectedMode === 'custom') {
+        guidanceText.textContent = selectedLang === 'fr'
+            ? `Mode personnalisé activé. ${customModeInstruction || 'Objectif par défaut en cours.'}`
+            : selectedLang === 'ar'
+                ? `تم تفعيل الوضع المخصص. ${customModeInstruction || 'يتم استخدام الهدف الافتراضي.'}`
+                : `Custom mode enabled. ${customModeInstruction || 'Using default custom objective.'}`;
+    } else if (selectedMode === 'focus') {
+        guidanceText.textContent = selectedLang === 'fr' ? 'Mode focus activé. Description détaillée en cours...' :
+            selectedLang === 'ar' ? 'تم تفعيل وضع التركيز. جارٍ وصف تفصيلي...' :
+                'Focus mode enabled. Detailed description in progress...';
+    } else {
+        guidanceText.textContent = selectedLang === 'fr' ? 'Analyse de l\'environnement...' :
+            selectedLang === 'ar' ? 'جاري تحليل البيئة...' :
+                'Scanning environment...';
+    }
     guidanceTextWrapper.className = 'info';
     showAlert('info', '👁️', 'SCANNING STARTED');
 
@@ -682,10 +938,52 @@ document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && isRunning) requestWakeLock();
 });
 
+function setupLongPressA11yHints() {
+    const candidates = document.querySelectorAll('button[data-a11y-hint]');
+    candidates.forEach((btn) => {
+        if (btn.id === 'talk-btn' || btn.id === 'custom-mode-record-btn') return;
+        let hintTimer = null;
+        let hintWasSpoken = false;
+
+        const clearHintTimer = () => {
+            if (hintTimer) {
+                clearTimeout(hintTimer);
+                hintTimer = null;
+            }
+        };
+
+        btn.addEventListener('pointerdown', () => {
+            hintWasSpoken = false;
+            clearHintTimer();
+            hintTimer = setTimeout(() => {
+                const hint = btn.dataset.a11yHint || btn.getAttribute('aria-label');
+                if (hint) {
+                    speak(hint);
+                    hintWasSpoken = true;
+                }
+            }, LONG_PRESS_HINT_MS);
+        });
+
+        ['pointerup', 'pointerleave', 'pointercancel'].forEach((eventName) => {
+            btn.addEventListener(eventName, clearHintTimer);
+        });
+
+        btn.addEventListener('click', (e) => {
+            if (hintWasSpoken) {
+                e.preventDefault();
+                e.stopPropagation();
+                hintWasSpoken = false;
+            }
+        });
+    });
+}
+
 // --- Event Listeners ---
 startBtn.addEventListener('click', () => { unlockAudio(); toggleRunning(); });
 clearHistoryBtn.addEventListener('click', clearHistory);
 setupTalkButton();
+setupCustomModeVoiceButton();
+setupLongPressA11yHints();
 
 // --- Voice Toggle ---
 function updateVoiceToggleUI() {
@@ -709,3 +1007,5 @@ voiceToggleBtn.addEventListener('click', () => {
 
 // Init voice toggle UI (default: ON)
 updateVoiceToggleUI();
+updateModeBadge();
+updateCustomModeUI();

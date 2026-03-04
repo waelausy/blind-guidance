@@ -77,10 +77,69 @@ function resolveLengthProfile(clipDurationSecRaw) {
     };
 }
 
+function normalizeMode(modeRaw) {
+    const mode = String(modeRaw || 'navigation').trim().toLowerCase();
+    if (mode === 'reading' || mode === 'focus' || mode === 'custom') return mode;
+    return 'navigation';
+}
+
+function normalizeCustomInstruction(customInstructionRaw) {
+    const clean = String(customInstructionRaw || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return clean.slice(0, 700);
+}
+
+function getModePromptByLang(mode, lang) {
+    const modePrompts = {
+        navigation: {
+            en: '- MODE: Navigation while moving. Prioritize immediate path safety and step-by-step movement guidance.',
+            fr: '- MODE : Navigation en déplacement. Priorise la sécurité immédiate du trajet et les actions de déplacement.',
+            ar: '- الوضع: تنقل أثناء الحركة. أعطِ أولوية للسلامة الفورية وإرشادات الحركة خطوة بخطوة.',
+        },
+        reading: {
+            en: '- MODE: Reading. Prioritize text extraction (signs, labels, pages), then concise explanation. If text is unclear, say what is readable and what is uncertain.',
+            fr: '- MODE : Lecture. Priorise la lecture du texte (panneaux, étiquettes, pages), puis une explication concise. Si le texte est flou, précise ce qui est lisible et incertain.',
+            ar: '- الوضع: قراءة. أعطِ أولوية لاستخراج النص (لوحات، ملصقات، صفحات) ثم شرح مختصر. إذا كان النص غير واضح فاذكر الجزء المقروء وغير المؤكد.',
+        },
+        focus: {
+            en: '- MODE: Focus (static scene). User may be seated or still. Give a structured, detailed nearby-scene description and key object relations.',
+            fr: '- MODE : Focus (scène statique). L\'utilisateur peut être assis ou immobile. Donne une description structurée et détaillée de la scène proche et des relations entre objets.',
+            ar: '- الوضع: تركيز (مشهد ثابت). قد يكون المستخدم جالساً أو ثابتاً. قدّم وصفاً منظماً ومفصلاً للمشهد القريب وعلاقات العناصر المهمة.',
+        },
+        custom: {
+            en: '- MODE: Custom personalized mode. Follow user-defined objective while keeping responses safe and actionable.',
+            fr: '- MODE : Personnalisé. Suis l\'objectif défini par l\'utilisateur tout en gardant des réponses sûres et actionnables.',
+            ar: '- الوضع: مخصص. اتبع هدف المستخدم المخصص مع الحفاظ على الأمان ووضوح التوجيه.',
+        },
+    };
+    return modePrompts[mode]?.[lang] || modePrompts.navigation.en;
+}
+
 // --- System Prompts per Language ---
-function getSystemPrompt(lang, contextStr, clipDurationSecRaw) {
+function getSystemPrompt(lang, contextStr, clipDurationSecRaw, modeRaw, customInstructionRaw) {
     const lengthProfile = resolveLengthProfile(clipDurationSecRaw);
     const { sentenceCount, maxWordsPerSentence, styleEn, styleFr, styleAr } = lengthProfile;
+    const mode = normalizeMode(modeRaw);
+    const customInstruction = normalizeCustomInstruction(customInstructionRaw);
+    const modeInstructionEn = getModePromptByLang(mode, 'en');
+    const modeInstructionFr = getModePromptByLang(mode, 'fr');
+    const modeInstructionAr = getModePromptByLang(mode, 'ar');
+    const customInstructionEn = mode === 'custom'
+        ? (customInstruction
+            ? `- USER CUSTOM OBJECTIVE (highest priority after immediate safety): ${customInstruction}`
+            : '- USER CUSTOM OBJECTIVE: not provided yet. Ask concise clarifying guidance when useful.')
+        : '';
+    const customInstructionFr = mode === 'custom'
+        ? (customInstruction
+            ? `- OBJECTIF PERSONNALISÉ UTILISATEUR (priorité maximale après sécurité immédiate) : ${customInstruction}`
+            : '- OBJECTIF PERSONNALISÉ : non fourni pour le moment. Donne des indications de clarification concises si utile.')
+        : '';
+    const customInstructionAr = mode === 'custom'
+        ? (customInstruction
+            ? `- هدف المستخدم المخصص (أولوية قصوى بعد السلامة الفورية): ${customInstruction}`
+            : '- الهدف المخصص غير متوفر حالياً. قدّم إرشاداً توضيحياً مختصراً عند الحاجة.')
+        : '';
 
     const prompts = {
         en: `You are a navigation safety assistant for a BLIND person. Analyze this short video clip.
@@ -89,6 +148,8 @@ OUTPUT FORMAT:
 - ${sentenceCount} ${sentenceCount > 1 ? 'short sentences' : 'short sentence'} (max ${maxWordsPerSentence} words each)
 - ${styleEn}, calm, clear, actionable; not dramatic
 - Prioritize what the user must do now
+${modeInstructionEn}
+${customInstructionEn}
 
 RULES:
 - ALWAYS respond, even when the path is safe
@@ -112,6 +173,8 @@ FORMAT DE SORTIE :
 - ${sentenceCount} ${sentenceCount > 1 ? 'phrases courtes' : 'phrase courte'} (max ${maxWordsPerSentence} mots par phrase)
 - Ton ${styleFr}, calme, clair, actionnable; pas alarmiste
 - Priorité à l'action immédiate utile
+${modeInstructionFr}
+${customInstructionFr}
 
 RÈGLES :
 - TOUJOURS répondre, même si le passage est sûr
@@ -135,6 +198,8 @@ Compare avec le contexte, signale les changements importants, puis réponds main
 - ${sentenceCount === 1 ? 'جملة قصيرة واحدة' : 'جملتان قصيرتان'} (حد أقصى ${maxWordsPerSentence} كلمة لكل جملة)
 - أسلوب ${styleAr} بنبرة هادئة وواضحة وعملية، بدون تهويل
 - ركّز على الإجراء المطلوب الآن
+${modeInstructionAr}
+${customInstructionAr}
 
 القواعد:
 - أجب دائماً حتى لو كان الطريق آمناً
@@ -155,7 +220,9 @@ ${contextStr}
     return prompts[lang] || prompts.en;
 }
 
-function getTalkPrompt(lang) {
+function getTalkPrompt(lang, modeRaw, customInstructionRaw) {
+    const mode = normalizeMode(modeRaw);
+    const customInstruction = normalizeCustomInstruction(customInstructionRaw);
     const transcriptLine = {
         en: 'First, transcribe EXACTLY what the user said (field "userText"). Then provide a helpful, SHORT reply (field "reply", max 2 sentences). Return ONLY valid JSON: {"userText": "...", "reply": "..."}. Respond in ENGLISH.',
         fr: 'D\'abord, transcris EXACTEMENT ce que l\'utilisateur a dit (champ "userText"). Ensuite, fournis une réponse utile et COURTE (champ "reply", max 2 phrases). Retourne UNIQUEMENT du JSON valide: {"userText": "...", "reply": "..."}. Réponds en FRANÇAIS.',
@@ -166,10 +233,85 @@ function getTalkPrompt(lang) {
         fr: 'Contexte des détections récentes (utilise si pertinent pour la question):',
         ar: 'سياق الاكتشافات الأخيرة (استخدمه إن كان ذا صلة بالسؤال):',
     };
+    const modeLine = {
+        navigation: {
+            en: 'Current mode: NAVIGATION. Keep reply practical and safety-first for movement.',
+            fr: 'Mode actuel : NAVIGATION. Réponse pratique, orientée sécurité de déplacement.',
+            ar: 'الوضع الحالي: التنقل. اجعل الرد عملياً ويركّز على السلامة أثناء الحركة.',
+        },
+        reading: {
+            en: 'Current mode: READING. Prioritize text understanding and factual clarification. You may use web knowledge when needed.',
+            fr: 'Mode actuel : LECTURE. Priorise la compréhension de texte et la clarification factuelle. Tu peux utiliser des connaissances web si nécessaire.',
+            ar: 'الوضع الحالي: القراءة. أعطِ أولوية لفهم النص والتوضيح المعلوماتي. يمكنك استخدام معرفة الويب عند الحاجة.',
+        },
+        focus: {
+            en: 'Current mode: FOCUS. Prioritize detailed scene explanation and object relationships.',
+            fr: 'Mode actuel : FOCUS. Priorise la description détaillée de la scène et des relations entre objets.',
+            ar: 'الوضع الحالي: التركيز. أعطِ أولوية للوصف التفصيلي للمشهد وعلاقات العناصر.',
+        },
+        custom: {
+            en: 'Current mode: CUSTOM. Follow the user objective while remaining clear and safe.',
+            fr: 'Mode actuel : PERSONNALISÉ. Suis l\'objectif utilisateur en restant clair et sûr.',
+            ar: 'الوضع الحالي: مخصص. اتبع هدف المستخدم مع الحفاظ على الوضوح والأمان.',
+        },
+    };
+    const customModeLine = {
+        en: customInstruction
+            ? `Custom objective to follow: ${customInstruction}`
+            : 'No custom objective provided yet. Ask one concise clarifying question only if needed.',
+        fr: customInstruction
+            ? `Objectif personnalisé à suivre : ${customInstruction}`
+            : 'Aucun objectif personnalisé fourni. Pose une seule question de clarification concise si nécessaire.',
+        ar: customInstruction
+            ? `الهدف المخصص المطلوب اتباعه: ${customInstruction}`
+            : 'لا يوجد هدف مخصص حتى الآن. اطرح سؤال توضيح واحداً فقط عند الضرورة.',
+    };
     return {
         transcriptInstruction: transcriptLine[lang] || transcriptLine.en,
         contextInstruction: contextLine[lang] || contextLine.en,
+        modeInstruction: modeLine[mode]?.[lang] || modeLine.navigation.en,
+        customModeInstruction: mode === 'custom' ? (customModeLine[lang] || customModeLine.en) : '',
+        mode,
     };
+}
+
+function getCustomModeBuilderPrompt(lang) {
+    const prompts = {
+        en: `You are building a personalized assistant mode from user's voice.
+Tasks:
+1) Transcribe exactly what the user asked.
+2) Rewrite as a clean, actionable custom instruction for a blind-guidance assistant.
+3) Keep safety constraints explicit (no dangerous suggestions).
+Return ONLY valid JSON:
+{"rawUserIntent":"...","optimizedInstruction":"...","shortLabel":"..."}
+Rules:
+- optimizedInstruction: 1-3 short sentences, precise, operational
+- shortLabel: 2-4 words
+- language must be English.`,
+        fr: `Tu construis un mode personnalisé à partir de la voix de l'utilisateur.
+Tâches :
+1) Transcrire exactement ce que l'utilisateur demande.
+2) Réécrire en instruction personnalisée claire et actionnable pour un assistant de guidage.
+3) Garder des contraintes de sécurité explicites (aucun conseil dangereux).
+Retourne UNIQUEMENT du JSON valide :
+{"rawUserIntent":"...","optimizedInstruction":"...","shortLabel":"..."}
+Règles :
+- optimizedInstruction : 1 à 3 phrases courtes, précises, opérationnelles
+- shortLabel : 2 à 4 mots
+- langue : français.`,
+        ar: `أنت تبني وضعاً مخصصاً من صوت المستخدم.
+المهام:
+1) نسخ ما طلبه المستخدم حرفياً.
+2) إعادة صياغته كتعليمات مخصصة واضحة وقابلة للتنفيذ لمساعد إرشاد.
+3) إبقاء قيود السلامة واضحة (بدون اقتراحات خطرة).
+أعد JSON صالحاً فقط:
+{"rawUserIntent":"...","optimizedInstruction":"...","shortLabel":"..."}
+القواعد:
+- optimizedInstruction من 1 إلى 3 جمل قصيرة دقيقة وعملية
+- shortLabel من 2 إلى 4 كلمات
+- اللغة: العربية.`,
+    };
+    return prompts[lang] || prompts.en;
 }
 
 // --- Helper: build context string ---
@@ -227,6 +369,8 @@ app.post('/api/analyze', upload.single('video'), async (req, res) => {
 
     const lang = req.body?.lang || 'en';
     const clipDurationSec = req.body?.clipDurationSec;
+    const mode = normalizeMode(req.body?.mode);
+    const customInstruction = req.body?.customInstruction || '';
 
     try {
         const videoPath = req.file.path;
@@ -234,7 +378,7 @@ app.post('/api/analyze', upload.single('video'), async (req, res) => {
         const base64Video = videoBytes.toString('base64');
 
         const contextStr = buildContextStr();
-        const prompt = getSystemPrompt(lang, contextStr, clipDurationSec);
+        const prompt = getSystemPrompt(lang, contextStr, clipDurationSec, mode, customInstruction);
 
         const contents = [
             {
@@ -316,6 +460,8 @@ app.post('/api/talk', upload.single('audio'), async (req, res) => {
     }
 
     const lang = req.body?.lang || 'en';
+    const mode = normalizeMode(req.body?.mode);
+    const customInstruction = req.body?.customInstruction || '';
 
     try {
         const audioPath = req.file.path;
@@ -323,8 +469,8 @@ app.post('/api/talk', upload.single('audio'), async (req, res) => {
         const base64Audio = audioBytes.toString('base64');
 
         const contextStr = buildContextStr();
-        const { transcriptInstruction, contextInstruction } = getTalkPrompt(lang);
-        const fullPrompt = `${transcriptInstruction}\n\n${contextInstruction}\n${contextStr}\n\nNow listen to the audio clip and respond with valid JSON only:`;
+        const { transcriptInstruction, contextInstruction, modeInstruction, customModeInstruction } = getTalkPrompt(lang, mode, customInstruction);
+        const fullPrompt = `${transcriptInstruction}\n\n${modeInstruction}\n${customModeInstruction}\n\n${contextInstruction}\n${contextStr}\n\nNow listen to the audio clip and respond with valid JSON only:`;
 
         const contents = [
             {
@@ -340,6 +486,10 @@ app.post('/api/talk', upload.single('audio'), async (req, res) => {
             thinkingConfig: { thinkingLevel: 'MINIMAL' },
             responseMimeType: 'application/json',
         };
+        const customWantsWebSearch = mode === 'custom' && /internet|web|google|search|recherche|chercher|بحث|ويب/i.test(customInstruction);
+        if (mode === 'reading' || customWantsWebSearch) {
+            config.tools = [{ googleSearch: {} }];
+        }
 
         const response = await ai.models.generateContent({
             model: MODEL,
@@ -382,6 +532,88 @@ app.post('/api/talk', upload.single('audio'), async (req, res) => {
         if (req.file?.path) fs.unlink(req.file.path, () => { });
         res.status(500).json({
             error: 'Talk failed',
+            details: error.message,
+        });
+    }
+});
+
+// Build a custom mode from voice (transcribe + optimize instruction)
+app.post('/api/customize-mode', upload.single('audio'), async (req, res) => {
+    const reqStart = Date.now();
+    if (!req.file) {
+        return res.status(400).json({ error: 'No audio file received' });
+    }
+
+    const lang = req.body?.lang || 'en';
+
+    try {
+        const audioPath = req.file.path;
+        const audioBytes = fs.readFileSync(audioPath);
+        const base64Audio = audioBytes.toString('base64');
+
+        const prompt = getCustomModeBuilderPrompt(lang);
+        const contents = [
+            {
+                inlineData: {
+                    mimeType: req.file.mimetype || 'audio/webm',
+                    data: base64Audio,
+                },
+            },
+            { text: prompt },
+        ];
+
+        const config = {
+            thinkingConfig: { thinkingLevel: 'MINIMAL' },
+            responseMimeType: 'application/json',
+        };
+
+        const response = await ai.models.generateContent({
+            model: MODEL,
+            config,
+            contents,
+        });
+
+        const rawText = response.text || '{}';
+        const usage = response.usageMetadata || {};
+        const inputTokens = usage.promptTokenCount || 0;
+        const outputTokens = usage.candidatesTokenCount || 0;
+        const thisCost = calcCost(inputTokens, outputTokens, true);
+        const stats = getStats(thisCost, inputTokens, outputTokens);
+
+        let rawUserIntent = '';
+        let optimizedInstruction = '';
+        let shortLabel = '';
+        try {
+            const parsed = JSON.parse(rawText.trim());
+            rawUserIntent = String(parsed.rawUserIntent || '').trim();
+            optimizedInstruction = normalizeCustomInstruction(parsed.optimizedInstruction || '');
+            shortLabel = String(parsed.shortLabel || '').trim().slice(0, 40);
+        } catch (e) {
+            optimizedInstruction = normalizeCustomInstruction(rawText);
+        }
+
+        if (!optimizedInstruction) {
+            optimizedInstruction = lang === 'fr'
+                ? 'Décrire clairement la scène et donner des actions utiles avec priorité sécurité.'
+                : lang === 'ar'
+                    ? 'صف المشهد بوضوح وقدم إجراءات مفيدة مع أولوية السلامة.'
+                    : 'Describe the scene clearly and provide useful actions with safety priority.';
+        }
+
+        fs.unlink(audioPath, () => { });
+
+        res.json({
+            rawUserIntent,
+            optimizedInstruction,
+            shortLabel,
+            processingTimeMs: Date.now() - reqStart,
+            stats,
+        });
+    } catch (error) {
+        console.error('Customize mode API error:', error);
+        if (req.file?.path) fs.unlink(req.file.path, () => { });
+        res.status(500).json({
+            error: 'Customize mode failed',
             details: error.message,
         });
     }

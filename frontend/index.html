@@ -26,7 +26,7 @@
       <h1 id="password-title">Blind Guide AI</h1>
       <p id="password-subtitle">Enter access password</p>
       <input type="password" id="password-input" placeholder="Password" autocomplete="off" />
-      <button id="password-submit">Access →</button>
+      <button id="password-submit" aria-label="Access application" data-a11y-hint="Access application">Access →</button>
       <p id="password-error" class="hidden">❌ Incorrect password</p>
     </div>
   </div>
@@ -38,19 +38,57 @@
       <h1 id="lang-title">Blind Guide AI</h1>
       <p id="lang-subtitle">Choose your language</p>
       <div id="lang-buttons">
-        <button class="lang-btn" data-lang="ar">
+        <button class="lang-btn" data-lang="ar" aria-label="Choisir arabe" data-a11y-hint="Langue arabe">
           <span class="lang-flag">🇸🇦</span>
           <span class="lang-name">العربية</span>
         </button>
-        <button class="lang-btn" data-lang="fr">
+        <button class="lang-btn" data-lang="fr" aria-label="Choisir français" data-a11y-hint="Langue français">
           <span class="lang-flag">🇫🇷</span>
           <span class="lang-name">Français</span>
         </button>
-        <button class="lang-btn" data-lang="en">
+        <button class="lang-btn" data-lang="en" aria-label="Choose English" data-a11y-hint="English language">
           <span class="lang-flag">🇬🇧</span>
           <span class="lang-name">English</span>
         </button>
       </div>
+    </div>
+  </div>
+
+  <!-- ====== MODE SELECTION SCREEN ====== -->
+  <div id="mode-screen" class="hidden">
+    <div id="mode-container">
+      <div id="mode-icon">🎛️</div>
+      <h1 id="mode-title">Select Guidance Mode</h1>
+      <p id="mode-subtitle">Navigation is default. Hold any button to hear details.</p>
+      <div id="mode-buttons">
+        <button class="mode-btn active" data-mode="navigation" aria-label="Navigation mode, default" data-a11y-hint="Navigation mode. Real-time safety guidance while walking. Default mode.">
+          <span class="mode-name">Navigation</span>
+          <span class="mode-desc">Real-time obstacle safety while moving</span>
+        </button>
+        <button class="mode-btn" data-mode="reading" aria-label="Reading mode" data-a11y-hint="Reading mode. Reads text and can search internet on demand.">
+          <span class="mode-name">Reading</span>
+          <span class="mode-desc">Read signs, labels, books, and ask web questions</span>
+        </button>
+        <button class="mode-btn" data-mode="focus" aria-label="Focus mode" data-a11y-hint="Focus mode. Detailed description for static scene when seated or standing still.">
+          <span class="mode-name">Focus</span>
+          <span class="mode-desc">Detailed description for static scenes and objects</span>
+        </button>
+        <button class="mode-btn" data-mode="custom" aria-label="Custom personalized mode" data-a11y-hint="Custom mode. Hold the voice button to describe exactly what you want the assistant to do.">
+          <span class="mode-name">Custom</span>
+          <span class="mode-desc">Voice-define your own guidance behavior and objective</span>
+        </button>
+      </div>
+
+      <div id="custom-mode-config" class="hidden">
+        <div id="custom-mode-title">Personalize Your Mode (Voice)</div>
+        <button id="custom-mode-record-btn" data-a11y-hint="Hold to record your custom objective, release to optimize it">
+          Hold To Record Goal
+        </button>
+        <div id="custom-mode-status">Hold the button and describe exactly what you want.</div>
+        <div id="custom-mode-preview" class="hidden"></div>
+      </div>
+
+      <button id="mode-continue-btn" aria-label="Continue with selected mode" data-a11y-hint="Continue with selected mode and open camera">Continue →</button>
     </div>
   </div>
 
@@ -69,6 +107,7 @@
           <span id="status-dot"></span>
           <span id="status-text">Initializing...</span>
         </div>
+        <div id="mode-badge">MODE: NAVIGATION</div>
         <div id="scan-counter">
           <span id="scan-icon">📡</span>
           <span id="scan-count">0</span>
@@ -79,9 +118,9 @@
       <div id="duration-bar">
         <span id="duration-label">⏱ Capture:</span>
         <div id="duration-options">
-          <button class="dur-btn" data-dur="2">2s</button>
-          <button class="dur-btn active" data-dur="4">4s</button>
-          <button class="dur-btn" data-dur="8">8s</button>
+          <button class="dur-btn" data-dur="2" aria-label="Capture duration 2 seconds" data-a11y-hint="Capture duration two seconds">2s</button>
+          <button class="dur-btn active" data-dur="4" aria-label="Capture duration 4 seconds" data-a11y-hint="Capture duration four seconds">4s</button>
+          <button class="dur-btn" data-dur="8" aria-label="Capture duration 8 seconds" data-a11y-hint="Capture duration eight seconds">8s</button>
         </div>
       </div>
 
@@ -122,22 +161,22 @@
       <div id="history-panel">
         <div id="history-header">
           <span>📋 Recent</span>
-          <button id="clear-history-btn" title="Clear history">✕</button>
+          <button id="clear-history-btn" title="Clear history" aria-label="Clear history" data-a11y-hint="Clear recent history">✕</button>
         </div>
         <div id="history-list"></div>
       </div>
 
       <!-- Controls -->
       <div id="controls">
-        <button id="start-btn" class="control-btn primary">
+        <button id="start-btn" class="control-btn primary" aria-label="Start or stop guidance" data-a11y-hint="Start or stop guidance mode">
           <span class="btn-icon">▶</span>
           <span class="btn-label">START</span>
         </button>
-        <button id="talk-btn" class="control-btn talk" disabled>
+        <button id="talk-btn" class="control-btn talk" disabled aria-label="Hold to talk" data-a11y-hint="Hold to record voice, release to send">
           <span class="btn-icon">🎤</span>
           <span class="btn-label">HOLD</span>
         </button>
-        <button id="voice-toggle-btn" class="control-btn voice-toggle" title="Toggle voice">
+        <button id="voice-toggle-btn" class="control-btn voice-toggle" title="Toggle voice" aria-label="Toggle voice output" data-a11y-hint="Toggle voice output on or off">
           <span class="btn-icon">🔊</span>
           <span class="btn-label">VOICE</span>
         </button>
