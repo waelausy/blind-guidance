@@ -52,8 +52,9 @@ jobs:
             npm install --omit=dev
 
             echo "🔧 Configure Nginx..."
-            sudo cp ~/blind-guidance/nginx.conf /etc/nginx/sites-available/blind-guidance-6000
-            sudo ln -sf /etc/nginx/sites-available/blind-guidance-6000 /etc/nginx/sites-enabled/blind-guidance-6000
+            sudo cp ~/blind-guidance/nginx.conf /etc/nginx/sites-available/blind-guidance-8443
+            sudo rm -f /etc/nginx/sites-enabled/blind-guidance-6000
+            sudo ln -sf /etc/nginx/sites-available/blind-guidance-8443 /etc/nginx/sites-enabled/blind-guidance-8443
             sudo nginx -t
             sudo systemctl reload nginx
 

@@ -4,11 +4,14 @@
 
 ```
 GitHub (main) → GitHub Actions → VPS (ubuntu@51.38.33.149)
-                                   ├── nginx :6000 (blind-guidance-6000)
+                                   ├── nginx :8443 SSL (blind-guidance-8443)
                                    │     ├── / → frontend/ (static HTML/JS/CSS)
                                    │     └── /api/ → proxy_pass → :6111
                                    └── node server.js :6111 (blind-guidance.service)
 ```
+
+> ⚠️ Port 6000 était bloqué par les navigateurs (ERR_UNSAFE_PORT).
+> Port 8443 est un port HTTPS safe reconnu par tous les navigateurs.
 
 ## Mapping des ports sur le VPS
 
@@ -16,7 +19,7 @@ GitHub (main) → GitHub Actions → VPS (ubuntu@51.38.33.149)
 |----------------|-----------------|----------------------|
 | Studio Creatif | :7000           | 127.0.0.1:8000       |
 | Voxtral        | :5000           | 127.0.0.1:5111       |
-| **Blind Guidance** | **:6000**   | **127.0.0.1:6111**   |
+| **Blind Guidance** | **:8443 HTTPS** | **127.0.0.1:6111** |
 
 ## Ce qui est AUTOMATIQUE (GitHub Actions)
 
@@ -25,7 +28,7 @@ Chaque `git push` sur `main` déclenche `.github/workflows/deploy.yml` :
 1. **Upload** des fichiers via `scp` : `backend/`, `frontend/`, `nginx.conf`, `blind-guidance.service`
 2. **Sur le VPS** via SSH :
    - `npm install --omit=dev`
-   - Configure nginx sur `:6000`
+   - Configure nginx sur `:8443` SSL
    - Installe/redémarre `blind-guidance.service`
    - Smoke tests
 
