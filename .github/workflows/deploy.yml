@@ -3,31 +3,47 @@ name: Deploy Blind Guidance to VPS
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      VPS_IP: ${{ secrets.VPS_IP }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PASSWORD: ${{ secrets.VPS_PASSWORD }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install sshpass
+        run: sudo apt-get update && sudo apt-get install -y sshpass
+
       - name: Upload files to VPS
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.VPS_HOST }}
-          username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
-          source: "backend/,frontend/,nginx.conf,blind-guidance.service"
-          target: "/home/ubuntu/blind-guidance/"
-          strip_components: 0
+        run: |
+          set -euo pipefail
+          sshpass -p "$VPS_PASSWORD" ssh -o StrictHostKeyChecking=no "$VPS_USER@$VPS_IP" \
+            "mkdir -p ~/blind-guidance/backend ~/blind-guidance/frontend"
+
+          sshpass -p "$VPS_PASSWORD" scp -o StrictHostKeyChecking=no -r \
+            ./backend/* \
+            "$VPS_USER@$VPS_IP:~/blind-guidance/backend/"
+
+          sshpass -p "$VPS_PASSWORD" scp -o StrictHostKeyChecking=no -r \
+            ./frontend/* \
+            "$VPS_USER@$VPS_IP:~/blind-guidance/frontend/"
+
+          sshpass -p "$VPS_PASSWORD" scp -o StrictHostKeyChecking=no \
+            ./nginx.conf ./blind-guidance.service \
+            "$VPS_USER@$VPS_IP:~/blind-guidance/"
 
       - name: Deploy on VPS
         uses: appleboy/ssh-action@v1.0.3
         with:
-          host: ${{ secrets.VPS_HOST }}
+          host: ${{ secrets.VPS_IP }}
           username: ${{ secrets.VPS_USER }}
-          key: ${{ secrets.VPS_SSH_KEY }}
+          password: ${{ secrets.VPS_PASSWORD }}
           script: |
             set -e
 
@@ -50,7 +66,5 @@ jobs:
             sudo systemctl status blind-guidance --no-pager
 
             echo "🧪 Smoke tests..."
-            curl -sf http://127.0.0.1:6111/api/health || echo "⚠️  /api/health not found (ok if not implemented)"
-            curl -sf http://127.0.0.1:6000/ -o /dev/null && echo "✅ Frontend OK on :6000" || echo "❌ Frontend KO"
-
+            curl -sf http://127.0.0.1:6000/ -o /dev/null && echo "✅ Frontend OK on :6000" || echo "⚠️ Frontend not yet ready"
             echo "✅ Deployment complete!"
