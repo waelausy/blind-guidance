@@ -12,6 +12,11 @@
 const API_BASE = window.location.origin;
 const MAX_HISTORY_DISPLAY = 8;
 
+// --- DOM Elements ---
+const langScreen = document.getElementById('lang-screen');
+const appScreen = document.getElementById('app');
+const langButtons = document.querySelectorAll('.lang-btn');
+
 // --- Password Gate ---
 const passwordScreen = document.getElementById('password-screen');
 const passwordInput = document.getElementById('password-input');
@@ -30,38 +35,6 @@ async function checkPassword(pwd) {
         return false;
     }
 }
-
-if (passwordScreen) {
-    const savedToken = sessionStorage.getItem('blind_auth');
-    if (savedToken === 'ok') {
-        passwordScreen.classList.add('hidden');
-        langScreen.classList.remove('hidden');
-    }
-
-    passwordSubmit.addEventListener('click', async () => {
-        const pwd = passwordInput.value.trim();
-        if (!pwd) return;
-        unlockAudio();
-        const ok = await checkPassword(pwd);
-        if (ok) {
-            sessionStorage.setItem('blind_auth', 'ok');
-            passwordScreen.classList.add('hidden');
-            langScreen.classList.remove('hidden');
-        } else {
-            passwordError.classList.remove('hidden');
-            passwordInput.value = '';
-        }
-    });
-
-    passwordInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') passwordSubmit.click();
-    });
-}
-
-// --- DOM Elements ---
-const langScreen = document.getElementById('lang-screen');
-const appScreen = document.getElementById('app');
-const langButtons = document.querySelectorAll('.lang-btn');
 
 const cameraPreview = document.getElementById('camera-preview');
 const statusDot = document.getElementById('status-dot');
@@ -146,6 +119,34 @@ function loadVoices() {
 }
 window.speechSynthesis.onvoiceschanged = loadVoices;
 loadVoices();
+
+// --- Password Gate Init (after unlockAudio is defined) ---
+if (passwordScreen) {
+    const savedToken = sessionStorage.getItem('blind_auth');
+    if (savedToken === 'ok') {
+        passwordScreen.classList.add('hidden');
+        langScreen.classList.remove('hidden');
+    }
+
+    passwordSubmit.addEventListener('click', async () => {
+        const pwd = passwordInput.value.trim();
+        if (!pwd) return;
+        unlockAudio();
+        const ok = await checkPassword(pwd);
+        if (ok) {
+            sessionStorage.setItem('blind_auth', 'ok');
+            passwordScreen.classList.add('hidden');
+            langScreen.classList.remove('hidden');
+        } else {
+            passwordError.classList.remove('hidden');
+            passwordInput.value = '';
+        }
+    });
+
+    passwordInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') passwordSubmit.click();
+    });
+}
 
 function pickBestVoice(lang) {
     if (ttsVoices.length === 0) ttsVoices = window.speechSynthesis.getVoices();
