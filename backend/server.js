@@ -10,6 +10,9 @@ import { GoogleGenAI } from '@google/genai';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Load prompts
+const promptsData = JSON.parse(fs.readFileSync(path.join(__dirname, 'prompts.json'), 'utf8'));
+
 const app = express();
 const PORT = process.env.PORT || 3005;
 
@@ -91,28 +94,7 @@ function normalizeCustomInstruction(customInstructionRaw) {
 }
 
 function getModePromptByLang(mode, lang) {
-    const modePrompts = {
-        navigation: {
-            en: '- MODE: Navigation while moving. Prioritize immediate path safety and step-by-step movement guidance.',
-            fr: '- MODE : Navigation en déplacement. Priorise la sécurité immédiate du trajet et les actions de déplacement.',
-            ar: '- الوضع: تنقل أثناء الحركة. أعطِ أولوية للسلامة الفورية وإرشادات الحركة خطوة بخطوة.',
-        },
-        reading: {
-            en: '- MODE: Reading. Prioritize text extraction (signs, labels, pages), then concise explanation. Do not repeat the same page text when unchanged.',
-            fr: '- MODE : Lecture. Priorise la lecture du texte (panneaux, étiquettes, pages), puis une explication concise. Ne répète pas la même page si elle n\'a pas changé.',
-            ar: '- الوضع: قراءة. أعطِ أولوية لاستخراج النص (لوحات، ملصقات، صفحات) ثم شرح مختصر. لا تكرر نص الصفحة نفسها إذا لم يتغير.',
-        },
-        focus: {
-            en: '- MODE: Focus (static scene). User may be seated or still. Give a structured, detailed nearby-scene description and key object relations.',
-            fr: '- MODE : Focus (scène statique). L\'utilisateur peut être assis ou immobile. Donne une description structurée et détaillée de la scène proche et des relations entre objets.',
-            ar: '- الوضع: تركيز (مشهد ثابت). قد يكون المستخدم جالساً أو ثابتاً. قدّم وصفاً منظماً ومفصلاً للمشهد القريب وعلاقات العناصر المهمة.',
-        },
-        custom: {
-            en: '- MODE: Custom personalized mode. Follow user-defined objective while keeping responses safe and actionable.',
-            fr: '- MODE : Personnalisé. Suis l\'objectif défini par l\'utilisateur tout en gardant des réponses sûres et actionnables.',
-            ar: '- الوضع: مخصص. اتبع هدف المستخدم المخصص مع الحفاظ على الأمان ووضوح التوجيه.',
-        },
-    };
+    const modePrompts = promptsData.modePrompts;
     return modePrompts[mode]?.[lang] || modePrompts.navigation.en;
 }
 
@@ -122,226 +104,75 @@ function getSystemPrompt(lang, contextStr, clipDurationSecRaw, modeRaw, customIn
     const { sentenceCount, maxWordsPerSentence, styleEn, styleFr, styleAr } = lengthProfile;
     const mode = normalizeMode(modeRaw);
     const customInstruction = normalizeCustomInstruction(customInstructionRaw);
-    const modeInstructionEn = getModePromptByLang(mode, 'en');
-    const modeInstructionFr = getModePromptByLang(mode, 'fr');
-    const modeInstructionAr = getModePromptByLang(mode, 'ar');
-    const customInstructionEn = mode === 'custom'
-        ? (customInstruction
-            ? `- USER CUSTOM OBJECTIVE (highest priority after immediate safety): ${customInstruction}`
-            : '- USER CUSTOM OBJECTIVE: not provided yet. Ask concise clarifying guidance when useful.')
-        : '';
-    const customInstructionFr = mode === 'custom'
-        ? (customInstruction
-            ? `- OBJECTIF PERSONNALISÉ UTILISATEUR (priorité maximale après sécurité immédiate) : ${customInstruction}`
-            : '- OBJECTIF PERSONNALISÉ : non fourni pour le moment. Donne des indications de clarification concises si utile.')
-        : '';
-    const customInstructionAr = mode === 'custom'
-        ? (customInstruction
-            ? `- هدف المستخدم المخصص (أولوية قصوى بعد السلامة الفورية): ${customInstruction}`
-            : '- الهدف المخصص غير متوفر حالياً. قدّم إرشاداً توضيحياً مختصراً عند الحاجة.')
-        : '';
-    const isReadingMode = mode === 'reading';
-    const positionRuleEn = isReadingMode
-        ? '- In reading mode, describe text location simply (top/middle/bottom/left/right). Never use clock-time notation.'
-        : '- Mention obstacle position clearly using front/back/left/right (or straight/slight left/slight right). Never use clock-time notation.';
-    const positionRuleFr = isReadingMode
-        ? '- En mode lecture, indique la position du texte simplement (haut/milieu/bas/gauche/droite). N\'utilise jamais la notation en heures.'
-        : '- Donne la position des obstacles clairement avec devant/derrière/gauche/droite (ou tout droit/légèrement gauche/légèrement droite). N\'utilise jamais la notation en heures.';
-    const positionRuleAr = isReadingMode
-        ? '- في وضع القراءة، اذكر موقع النص بشكل بسيط (أعلى/وسط/أسفل/يسار/يمين). لا تستخدم صيغة الساعة إطلاقاً.'
-        : '- اذكر موقع العوائق بوضوح باستخدام أمام/خلف/يسار/يمين (أو مباشرة/يسار قليلاً/يمين قليلاً). لا تستخدم صيغة الساعة إطلاقاً.';
-    const readingDeltaEn = isReadingMode
-        ? '- If the page/text is unchanged vs previous context, do NOT reread it. Give only delta/new lines or say unchanged briefly.'
-        : '';
-    const readingDeltaFr = isReadingMode
-        ? '- Si la page/le texte est identique au contexte précédent, ne le relis pas. Donne seulement les nouveautés ou dis brièvement que c\'est inchangé.'
-        : '';
-    const readingDeltaAr = isReadingMode
-        ? '- إذا كانت الصفحة/النص كما في السياق السابق فلا تعيد قراءتها. اذكر فقط الجديد أو قل باختصار أنه بدون تغيير.'
-        : '';
-    const dangerPriorityEn = isReadingMode
-        ? '- Mention obstacle danger only if immediate and critical; otherwise prioritize reading content.'
-        : '- DANGER FIRST: obstacles, stairs, cars, bikes, people, curbs, holes, uneven ground';
-    const dangerPriorityFr = isReadingMode
-        ? '- En mode lecture, ne signale les obstacles que s\'ils sont immédiats et critiques; sinon priorise le contenu du texte.'
-        : '- DANGER EN PREMIER : obstacles, escaliers, voitures, vélos, personnes, trottoir, trous, sol irrégulier';
-    const dangerPriorityAr = isReadingMode
-        ? '- لا تذكر المخاطر إلا إذا كانت فورية وخطيرة؛ خلاف ذلك أعطِ أولوية لمحتوى القراءة.'
-        : '- الخطر أولاً: عوائق، سلالم، سيارات، دراجات، أشخاص، أرصفة، حفر، أرض غير مستوية';
-
-    const prompts = {
-        en: `You are a navigation safety assistant for a BLIND person. Analyze this short video clip.
-
-OUTPUT FORMAT:
-- ${sentenceCount} ${sentenceCount > 1 ? 'short sentences' : 'short sentence'} (max ${maxWordsPerSentence} words each)
-- ${styleEn}, calm, clear, actionable; not dramatic
-- Prioritize what the user must do now
-${modeInstructionEn}
-${customInstructionEn}
-
-RULES:
-- ALWAYS respond, even when the path is safe
-${positionRuleEn}
-- Estimate DISTANCE in meters (or "very close" if < 1 meter)
-- Mention movement direction of risks when visible (approaching/leaving/crossing)
-${dangerPriorityEn}
-${readingDeltaEn}
-- Use one warning word only for immediate danger: "STOP" or "CAREFUL" (no repetition)
-- If no immediate danger: confirm safe path and give the best direction
-- Never say "I can see" or "I notice"
-- Respond in ENGLISH only
-
-PREVIOUS CONTEXT:
-${contextStr}
-
-Compare with context, mention important changes, then respond now:`,
-
-        fr: `Tu es un assistant de sécurité et d'orientation pour une personne AVEUGLE. Analyse ce court clip vidéo.
-
-FORMAT DE SORTIE :
-- ${sentenceCount} ${sentenceCount > 1 ? 'phrases courtes' : 'phrase courte'} (max ${maxWordsPerSentence} mots par phrase)
-- Ton ${styleFr}, calme, clair, actionnable; pas alarmiste
-- Priorité à l'action immédiate utile
-${modeInstructionFr}
-${customInstructionFr}
-
-RÈGLES :
-- TOUJOURS répondre, même si le passage est sûr
-${positionRuleFr}
-- Estimer la DISTANCE en mètres (ou "très proche" si < 1 mètre)
-- Indiquer le mouvement des risques si visible (approche, s'éloigne, traverse)
-${dangerPriorityFr}
-${readingDeltaFr}
-- Un seul mot d'alerte pour danger immédiat: "STOP" ou "ATTENTION" (sans répétition)
-- S'il n'y a pas de danger immédiat : confirmer que c'est dégagé et donner la meilleure direction
-- Ne jamais dire "Je vois" ou "Je remarque"
-- Répondre en FRANÇAIS uniquement
-
-CONTEXTE PRÉCÉDENT :
-${contextStr}
-
-Compare avec le contexte, signale les changements importants, puis réponds maintenant :`,
-
-        ar: `أنت مساعد أمان وتوجيه لشخص كفيف. حلّل هذا المقطع القصير.
-
-صيغة الإخراج:
-- ${sentenceCount === 1 ? 'جملة قصيرة واحدة' : 'جملتان قصيرتان'} (حد أقصى ${maxWordsPerSentence} كلمة لكل جملة)
-- أسلوب ${styleAr} بنبرة هادئة وواضحة وعملية، بدون تهويل
-- ركّز على الإجراء المطلوب الآن
-${modeInstructionAr}
-${customInstructionAr}
-
-القواعد:
-- أجب دائماً حتى لو كان الطريق آمناً
-${positionRuleAr}
-- قدّر المسافة بالمتر (أو "قريب جداً" إذا أقل من متر)
-- اذكر حركة الخطر إن ظهرت (يقترب/يبتعد/يعبر)
-${dangerPriorityAr}
-${readingDeltaAr}
-- استخدم كلمة تحذير واحدة فقط للخطر الفوري: "قف" أو "انتبه" (بدون تكرار)
-- إذا لا يوجد خطر فوري: أكّد أن المسار آمن واذكر أفضل اتجاه
-- لا تقل "أرى" أو "ألاحظ"
-- أجب بالعربية فقط
-
-السياق السابق:
-${contextStr}
-
-قارن مع السياق، واذكر أهم التغييرات، ثم أجب الآن:`
-    };
-    return prompts[lang] || prompts.en;
+    
+    const style = lang === 'fr' ? styleFr : (lang === 'ar' ? styleAr : styleEn);
+    
+    let sentenceCountStr = '';
+    if (lang === 'en') sentenceCountStr = `${sentenceCount} ${sentenceCount > 1 ? 'short sentences' : 'short sentence'}`;
+    else if (lang === 'fr') sentenceCountStr = `${sentenceCount} ${sentenceCount > 1 ? 'phrases courtes' : 'phrase courte'}`;
+    else if (lang === 'ar') sentenceCountStr = sentenceCount === 1 ? 'جملة قصيرة واحدة' : 'جملتان قصيرتان';
+    
+    const modeTemplates = promptsData.systemPrompts[mode];
+    if (!modeTemplates) {
+        console.error(`Unknown mode: ${mode}, falling back to navigation`);
+        return promptsData.systemPrompts.navigation[lang] || promptsData.systemPrompts.navigation.en;
+    }
+    
+    let template = modeTemplates[lang] || modeTemplates.en;
+    
+    let customInstructionText = '';
+    if (mode === 'custom') {
+        if (customInstruction) {
+            customInstructionText = `USER CUSTOM OBJECTIVE (highest priority after immediate safety):\n${customInstruction}`;
+        } else {
+            const fallback = {
+                en: 'USER CUSTOM OBJECTIVE: not provided yet. Ask concise clarifying guidance when useful.',
+                fr: 'OBJECTIF PERSONNALISÉ : non fourni pour le moment. Donne des indications de clarification concises si utile.',
+                ar: 'الهدف المخصص غير متوفر حالياً. قدّم إرشاداً توضيحياً مختصراً عند الحاجة.'
+            };
+            customInstructionText = fallback[lang] || fallback.en;
+        }
+    }
+    
+    template = template.replace(/\{\{sentenceCountStr\}\}/g, sentenceCountStr)
+                       .replace(/\{\{maxWordsPerSentence\}\}/g, maxWordsPerSentence)
+                       .replace(/\{\{style\}\}/g, style)
+                       .replace(/\{\{customInstruction\}\}/g, customInstructionText)
+                       .replace(/\{\{contextStr\}\}/g, contextStr);
+                       
+    return template;
 }
 
 function getTalkPrompt(lang, modeRaw, customInstructionRaw) {
     const mode = normalizeMode(modeRaw);
     const customInstruction = normalizeCustomInstruction(customInstructionRaw);
-    const transcriptLine = {
-        en: 'First, transcribe EXACTLY what the user said (field "userText"). Then provide a helpful, SHORT reply (field "reply", max 2 sentences). Return ONLY valid JSON: {"userText": "...", "reply": "..."}. Respond in ENGLISH.',
-        fr: 'D\'abord, transcris EXACTEMENT ce que l\'utilisateur a dit (champ "userText"). Ensuite, fournis une réponse utile et COURTE (champ "reply", max 2 phrases). Retourne UNIQUEMENT du JSON valide: {"userText": "...", "reply": "..."}. Réponds en FRANÇAIS.',
-        ar: 'أولاً، انسخ بالضبط ما قاله المستخدم (حقل "userText"). ثم قدم رداً مفيداً وقصيراً (حقل "reply"، جملتان كحد أقصى). أعد JSON صالحاً فقط: {"userText": "...", "reply": "..."}. أجب بالعربية.',
-    };
-    const contextLine = {
-        en: 'Context from recent scene detections (use if relevant to user question):',
-        fr: 'Contexte des détections récentes (utilise si pertinent pour la question):',
-        ar: 'سياق الاكتشافات الأخيرة (استخدمه إن كان ذا صلة بالسؤال):',
-    };
-    const modeLine = {
-        navigation: {
-            en: 'Current mode: NAVIGATION. Keep reply practical and safety-first for movement.',
-            fr: 'Mode actuel : NAVIGATION. Réponse pratique, orientée sécurité de déplacement.',
-            ar: 'الوضع الحالي: التنقل. اجعل الرد عملياً ويركّز على السلامة أثناء الحركة.',
-        },
-        reading: {
-            en: 'Current mode: READING. Prioritize text understanding and factual clarification. Do not reread unchanged text; report only new/changed content. You may use web knowledge when needed.',
-            fr: 'Mode actuel : LECTURE. Priorise la compréhension du texte et la clarification factuelle. Ne relis pas un contenu inchangé; annonce seulement ce qui est nouveau/modifié. Tu peux utiliser des connaissances web si nécessaire.',
-            ar: 'الوضع الحالي: القراءة. أعطِ أولوية لفهم النص والتوضيح المعلوماتي. لا تعِد قراءة النص غير المتغير؛ اذكر فقط الجديد أو المعدّل. يمكنك استخدام معرفة الويب عند الحاجة.',
-        },
-        focus: {
-            en: 'Current mode: FOCUS. Prioritize detailed scene explanation and object relationships.',
-            fr: 'Mode actuel : FOCUS. Priorise la description détaillée de la scène et des relations entre objets.',
-            ar: 'الوضع الحالي: التركيز. أعطِ أولوية للوصف التفصيلي للمشهد وعلاقات العناصر.',
-        },
-        custom: {
-            en: 'Current mode: CUSTOM. Follow the user objective while remaining clear and safe.',
-            fr: 'Mode actuel : PERSONNALISÉ. Suis l\'objectif utilisateur en restant clair et sûr.',
-            ar: 'الوضع الحالي: مخصص. اتبع هدف المستخدم مع الحفاظ على الوضوح والأمان.',
-        },
-    };
-    const customModeLine = {
-        en: customInstruction
-            ? `Custom objective to follow: ${customInstruction}`
-            : 'No custom objective provided yet. Ask one concise clarifying question only if needed.',
-        fr: customInstruction
-            ? `Objectif personnalisé à suivre : ${customInstruction}`
-            : 'Aucun objectif personnalisé fourni. Pose une seule question de clarification concise si nécessaire.',
-        ar: customInstruction
-            ? `الهدف المخصص المطلوب اتباعه: ${customInstruction}`
-            : 'لا يوجد هدف مخصص حتى الآن. اطرح سؤال توضيح واحداً فقط عند الضرورة.',
-    };
+    
+    const talkPrompts = promptsData.talkPrompts;
+    
+    const transcriptInstruction = talkPrompts.transcriptLine[lang] || talkPrompts.transcriptLine.en;
+    const contextInstruction = talkPrompts.contextLine[lang] || talkPrompts.contextLine.en;
+    const modeInstruction = talkPrompts.modeLine[mode]?.[lang] || talkPrompts.modeLine.navigation.en;
+    
+    let customModeInstruction = '';
+    if (mode === 'custom') {
+        if (customInstruction) {
+            customModeInstruction = talkPrompts.customModeLine.withUser[lang].replace('{{customInstruction}}', customInstruction);
+        } else {
+            customModeInstruction = talkPrompts.customModeLine.withoutUser[lang];
+        }
+    }
+    
     return {
-        transcriptInstruction: transcriptLine[lang] || transcriptLine.en,
-        contextInstruction: contextLine[lang] || contextLine.en,
-        modeInstruction: modeLine[mode]?.[lang] || modeLine.navigation.en,
-        customModeInstruction: mode === 'custom' ? (customModeLine[lang] || customModeLine.en) : '',
+        transcriptInstruction,
+        contextInstruction,
+        modeInstruction,
+        customModeInstruction,
         mode,
     };
 }
 
 function getCustomModeBuilderPrompt(lang) {
-    const prompts = {
-        en: `You are building a personalized assistant mode from user's voice.
-Tasks:
-1) Transcribe exactly what the user asked.
-2) Rewrite as a clean, actionable custom instruction for a blind-guidance assistant.
-3) Keep safety constraints explicit (no dangerous suggestions).
-Return ONLY valid JSON:
-{"rawUserIntent":"...","optimizedInstruction":"...","shortLabel":"..."}
-Rules:
-- optimizedInstruction: 1-3 short sentences, precise, operational
-- shortLabel: 2-4 words
-- language must be English.`,
-        fr: `Tu construis un mode personnalisé à partir de la voix de l'utilisateur.
-Tâches :
-1) Transcrire exactement ce que l'utilisateur demande.
-2) Réécrire en instruction personnalisée claire et actionnable pour un assistant de guidage.
-3) Garder des contraintes de sécurité explicites (aucun conseil dangereux).
-Retourne UNIQUEMENT du JSON valide :
-{"rawUserIntent":"...","optimizedInstruction":"...","shortLabel":"..."}
-Règles :
-- optimizedInstruction : 1 à 3 phrases courtes, précises, opérationnelles
-- shortLabel : 2 à 4 mots
-- langue : français.`,
-        ar: `أنت تبني وضعاً مخصصاً من صوت المستخدم.
-المهام:
-1) نسخ ما طلبه المستخدم حرفياً.
-2) إعادة صياغته كتعليمات مخصصة واضحة وقابلة للتنفيذ لمساعد إرشاد.
-3) إبقاء قيود السلامة واضحة (بدون اقتراحات خطرة).
-أعد JSON صالحاً فقط:
-{"rawUserIntent":"...","optimizedInstruction":"...","shortLabel":"..."}
-القواعد:
-- optimizedInstruction من 1 إلى 3 جمل قصيرة دقيقة وعملية
-- shortLabel من 2 إلى 4 كلمات
-- اللغة: العربية.`,
-    };
+    const prompts = promptsData.customModeBuilderPrompts;
     return prompts[lang] || prompts.en;
 }
 
