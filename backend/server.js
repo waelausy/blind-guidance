@@ -98,9 +98,9 @@ function getModePromptByLang(mode, lang) {
             ar: '- الوضع: تنقل أثناء الحركة. أعطِ أولوية للسلامة الفورية وإرشادات الحركة خطوة بخطوة.',
         },
         reading: {
-            en: '- MODE: Reading. Prioritize text extraction (signs, labels, pages), then concise explanation. If text is unclear, say what is readable and what is uncertain.',
-            fr: '- MODE : Lecture. Priorise la lecture du texte (panneaux, étiquettes, pages), puis une explication concise. Si le texte est flou, précise ce qui est lisible et incertain.',
-            ar: '- الوضع: قراءة. أعطِ أولوية لاستخراج النص (لوحات، ملصقات، صفحات) ثم شرح مختصر. إذا كان النص غير واضح فاذكر الجزء المقروء وغير المؤكد.',
+            en: '- MODE: Reading. Prioritize text extraction (signs, labels, pages), then concise explanation. Do not repeat the same page text when unchanged.',
+            fr: '- MODE : Lecture. Priorise la lecture du texte (panneaux, étiquettes, pages), puis une explication concise. Ne répète pas la même page si elle n\'a pas changé.',
+            ar: '- الوضع: قراءة. أعطِ أولوية لاستخراج النص (لوحات، ملصقات، صفحات) ثم شرح مختصر. لا تكرر نص الصفحة نفسها إذا لم يتغير.',
         },
         focus: {
             en: '- MODE: Focus (static scene). User may be seated or still. Give a structured, detailed nearby-scene description and key object relations.',
@@ -140,6 +140,34 @@ function getSystemPrompt(lang, contextStr, clipDurationSecRaw, modeRaw, customIn
             ? `- هدف المستخدم المخصص (أولوية قصوى بعد السلامة الفورية): ${customInstruction}`
             : '- الهدف المخصص غير متوفر حالياً. قدّم إرشاداً توضيحياً مختصراً عند الحاجة.')
         : '';
+    const isReadingMode = mode === 'reading';
+    const positionRuleEn = isReadingMode
+        ? '- In reading mode, describe text location simply (top/middle/bottom/left/right). Never use clock-time notation.'
+        : '- Mention obstacle position clearly using front/back/left/right (or straight/slight left/slight right). Never use clock-time notation.';
+    const positionRuleFr = isReadingMode
+        ? '- En mode lecture, indique la position du texte simplement (haut/milieu/bas/gauche/droite). N\'utilise jamais la notation en heures.'
+        : '- Donne la position des obstacles clairement avec devant/derrière/gauche/droite (ou tout droit/légèrement gauche/légèrement droite). N\'utilise jamais la notation en heures.';
+    const positionRuleAr = isReadingMode
+        ? '- في وضع القراءة، اذكر موقع النص بشكل بسيط (أعلى/وسط/أسفل/يسار/يمين). لا تستخدم صيغة الساعة إطلاقاً.'
+        : '- اذكر موقع العوائق بوضوح باستخدام أمام/خلف/يسار/يمين (أو مباشرة/يسار قليلاً/يمين قليلاً). لا تستخدم صيغة الساعة إطلاقاً.';
+    const readingDeltaEn = isReadingMode
+        ? '- If the page/text is unchanged vs previous context, do NOT reread it. Give only delta/new lines or say unchanged briefly.'
+        : '';
+    const readingDeltaFr = isReadingMode
+        ? '- Si la page/le texte est identique au contexte précédent, ne le relis pas. Donne seulement les nouveautés ou dis brièvement que c\'est inchangé.'
+        : '';
+    const readingDeltaAr = isReadingMode
+        ? '- إذا كانت الصفحة/النص كما في السياق السابق فلا تعيد قراءتها. اذكر فقط الجديد أو قل باختصار أنه بدون تغيير.'
+        : '';
+    const dangerPriorityEn = isReadingMode
+        ? '- Mention obstacle danger only if immediate and critical; otherwise prioritize reading content.'
+        : '- DANGER FIRST: obstacles, stairs, cars, bikes, people, curbs, holes, uneven ground';
+    const dangerPriorityFr = isReadingMode
+        ? '- En mode lecture, ne signale les obstacles que s\'ils sont immédiats et critiques; sinon priorise le contenu du texte.'
+        : '- DANGER EN PREMIER : obstacles, escaliers, voitures, vélos, personnes, trottoir, trous, sol irrégulier';
+    const dangerPriorityAr = isReadingMode
+        ? '- لا تذكر المخاطر إلا إذا كانت فورية وخطيرة؛ خلاف ذلك أعطِ أولوية لمحتوى القراءة.'
+        : '- الخطر أولاً: عوائق، سلالم، سيارات، دراجات، أشخاص، أرصفة، حفر، أرض غير مستوية';
 
     const prompts = {
         en: `You are a navigation safety assistant for a BLIND person. Analyze this short video clip.
@@ -153,10 +181,11 @@ ${customInstructionEn}
 
 RULES:
 - ALWAYS respond, even when the path is safe
-- Mention exact obstacle POSITION with clock direction when possible (12 o'clock ahead, 3 right, 9 left)
+${positionRuleEn}
 - Estimate DISTANCE in meters (or "very close" if < 1 meter)
 - Mention movement direction of risks when visible (approaching/leaving/crossing)
-- DANGER FIRST: obstacles, stairs, cars, bikes, people, curbs, holes, uneven ground
+${dangerPriorityEn}
+${readingDeltaEn}
 - Use one warning word only for immediate danger: "STOP" or "CAREFUL" (no repetition)
 - If no immediate danger: confirm safe path and give the best direction
 - Never say "I can see" or "I notice"
@@ -178,10 +207,11 @@ ${customInstructionFr}
 
 RÈGLES :
 - TOUJOURS répondre, même si le passage est sûr
-- Donner la POSITION précise des obstacles, idéalement en "heures" (12h devant, 3h droite, 9h gauche)
+${positionRuleFr}
 - Estimer la DISTANCE en mètres (ou "très proche" si < 1 mètre)
 - Indiquer le mouvement des risques si visible (approche, s'éloigne, traverse)
-- DANGER EN PREMIER : obstacles, escaliers, voitures, vélos, personnes, trottoir, trous, sol irrégulier
+${dangerPriorityFr}
+${readingDeltaFr}
 - Un seul mot d'alerte pour danger immédiat: "STOP" ou "ATTENTION" (sans répétition)
 - S'il n'y a pas de danger immédiat : confirmer que c'est dégagé et donner la meilleure direction
 - Ne jamais dire "Je vois" ou "Je remarque"
@@ -203,10 +233,11 @@ ${customInstructionAr}
 
 القواعد:
 - أجب دائماً حتى لو كان الطريق آمناً
-- اذكر الموقع الدقيق للعائق ويفضّل بطريقة الساعة (12 أمام، 3 يمين، 9 يسار)
+${positionRuleAr}
 - قدّر المسافة بالمتر (أو "قريب جداً" إذا أقل من متر)
 - اذكر حركة الخطر إن ظهرت (يقترب/يبتعد/يعبر)
-- الخطر أولاً: عوائق، سلالم، سيارات، دراجات، أشخاص، أرصفة، حفر، أرض غير مستوية
+${dangerPriorityAr}
+${readingDeltaAr}
 - استخدم كلمة تحذير واحدة فقط للخطر الفوري: "قف" أو "انتبه" (بدون تكرار)
 - إذا لا يوجد خطر فوري: أكّد أن المسار آمن واذكر أفضل اتجاه
 - لا تقل "أرى" أو "ألاحظ"
@@ -240,9 +271,9 @@ function getTalkPrompt(lang, modeRaw, customInstructionRaw) {
             ar: 'الوضع الحالي: التنقل. اجعل الرد عملياً ويركّز على السلامة أثناء الحركة.',
         },
         reading: {
-            en: 'Current mode: READING. Prioritize text understanding and factual clarification. You may use web knowledge when needed.',
-            fr: 'Mode actuel : LECTURE. Priorise la compréhension de texte et la clarification factuelle. Tu peux utiliser des connaissances web si nécessaire.',
-            ar: 'الوضع الحالي: القراءة. أعطِ أولوية لفهم النص والتوضيح المعلوماتي. يمكنك استخدام معرفة الويب عند الحاجة.',
+            en: 'Current mode: READING. Prioritize text understanding and factual clarification. Do not reread unchanged text; report only new/changed content. You may use web knowledge when needed.',
+            fr: 'Mode actuel : LECTURE. Priorise la compréhension du texte et la clarification factuelle. Ne relis pas un contenu inchangé; annonce seulement ce qui est nouveau/modifié. Tu peux utiliser des connaissances web si nécessaire.',
+            ar: 'الوضع الحالي: القراءة. أعطِ أولوية لفهم النص والتوضيح المعلوماتي. لا تعِد قراءة النص غير المتغير؛ اذكر فقط الجديد أو المعدّل. يمكنك استخدام معرفة الويب عند الحاجة.',
         },
         focus: {
             en: 'Current mode: FOCUS. Prioritize detailed scene explanation and object relationships.',

@@ -23,6 +23,7 @@ const customModeConfig = document.getElementById('custom-mode-config');
 const customModeRecordBtn = document.getElementById('custom-mode-record-btn');
 const customModeStatus = document.getElementById('custom-mode-status');
 const customModePreview = document.getElementById('custom-mode-preview');
+const navBackBtn = document.getElementById('nav-back-btn');
 const appScreen = document.getElementById('app');
 const langButtons = document.querySelectorAll('.lang-btn');
 
@@ -95,6 +96,8 @@ let customModeRecorder = null;
 let customModeChunks = [];
 let customModeRecording = false;
 let customModeAudioStream = null;
+let currentScreen = 'password';
+const routeStack = [];
 
 const modeLabels = {
     navigation: 'NAVIGATION',
@@ -156,8 +159,9 @@ loadVoices();
 if (passwordScreen) {
     const savedToken = sessionStorage.getItem('blind_auth');
     if (savedToken === 'ok') {
-        passwordScreen.classList.add('hidden');
-        langScreen.classList.remove('hidden');
+        navigateTo('lang', { push: true, resetStack: true });
+    } else {
+        navigateTo('password', { push: false, resetStack: true });
     }
 
     passwordSubmit.addEventListener('click', async () => {
@@ -167,8 +171,7 @@ if (passwordScreen) {
         const ok = await checkPassword(pwd);
         if (ok) {
             sessionStorage.setItem('blind_auth', 'ok');
-            passwordScreen.classList.add('hidden');
-            langScreen.classList.remove('hidden');
+            navigateTo('lang');
         } else {
             passwordError.classList.remove('hidden');
             passwordInput.value = '';
@@ -256,6 +259,68 @@ function stopSpeaking() {
     }
 }
 
+function closeCustomModeAudioStream() {
+    if (!customModeAudioStream) return;
+    customModeAudioStream.getTracks().forEach((track) => track.stop());
+    customModeAudioStream = null;
+}
+
+function releaseCameraStream() {
+    if (!mediaStream) return;
+    mediaStream.getTracks().forEach((track) => track.stop());
+    mediaStream = null;
+    if (cameraPreview) cameraPreview.srcObject = null;
+}
+
+function setScreen(screen) {
+    const screens = {
+        password: passwordScreen,
+        lang: langScreen,
+        mode: modeScreen,
+        app: appScreen,
+    };
+    Object.values(screens).forEach((node) => {
+        if (!node) return;
+        node.classList.add('hidden');
+    });
+    const target = screens[screen] || screens.password;
+    target.classList.remove('hidden');
+    currentScreen = screen;
+    updateCustomModeUI();
+    updateModeBadge();
+    updateBackButtonUI();
+}
+
+function updateBackButtonUI() {
+    if (!navBackBtn) return;
+    const hasBack = routeStack.length > 0;
+    navBackBtn.classList.toggle('hidden', !hasBack);
+    navBackBtn.disabled = !hasBack;
+}
+
+function navigateTo(screen, options = {}) {
+    const { push = true, resetStack = false } = options;
+    if (resetStack) routeStack.length = 0;
+    if (push && currentScreen !== screen) {
+        routeStack.push(currentScreen);
+    }
+    setScreen(screen);
+}
+
+function navigateBack() {
+    if (routeStack.length === 0) return;
+    const previous = routeStack.pop();
+    if (currentScreen === 'app') {
+        stop();
+        releaseCameraStream();
+    }
+    if (currentScreen === 'mode') {
+        stopCustomModeRecording();
+        closeCustomModeAudioStream();
+    }
+    setScreen(previous);
+}
+
 function tByLang(texts) {
     if (selectedLang === 'fr') return texts.fr;
     if (selectedLang === 'ar') return texts.ar;
@@ -308,12 +373,8 @@ function updateModeBadge() {
 }
 
 function startAppFlow() {
-    if (customModeAudioStream) {
-        customModeAudioStream.getTracks().forEach((track) => track.stop());
-        customModeAudioStream = null;
-    }
-    modeScreen.classList.add('hidden');
-    appScreen.classList.remove('hidden');
+    closeCustomModeAudioStream();
+    navigateTo('app');
     updateModeBadge();
     initCamera();
 }
@@ -323,8 +384,7 @@ langButtons.forEach(btn => {
     btn.addEventListener('click', () => {
         selectedLang = btn.dataset.lang;
         unlockAudio();
-        langScreen.classList.add('hidden');
-        modeScreen.classList.remove('hidden');
+        navigateTo('mode');
         updateCustomModeUI();
     });
 });
@@ -597,6 +657,7 @@ async function analyzeClip(blob) {
         if (!response.ok) throw new Error(`Server error: ${response.status}`);
 
         const data = await response.json();
+        if (currentScreen !== 'app') return;
 
         // If user started talk while analysis was running, ignore this result.
         if (isTalkFlowActive || isTalking) return;
@@ -812,6 +873,7 @@ async function sendTalkAudio(blob) {
         addHistoryItem(`🎤 ${data.userText || '...'} → ${data.reply}`, 'info');
 
     } catch (err) {
+        if (currentScreen !== 'app') return;
         console.error('Talk error:', err);
         const errMsg = selectedLang === 'fr' ? 'Désolé, je n\'ai pas compris.' :
             selectedLang === 'ar' ? 'عذرًا، لم أفهم.' :
@@ -887,8 +949,22 @@ function stop() {
     isRunning = false;
 
     if (mediaRecorder && mediaRecorder.state === 'recording') mediaRecorder.stop();
+    if (currentAnalyzeController) {
+        currentAnalyzeController.abort();
+        currentAnalyzeController = null;
+    }
     if (loopTimeout) { clearTimeout(loopTimeout); loopTimeout = null; }
     if (elapsedInterval) { clearInterval(elapsedInterval); elapsedInterval = null; }
+    if (audioRecorder && audioRecorder.state === 'recording') {
+        audioRecorder.onstop = null;
+        audioRecorder.stop();
+    }
+    isTalking = false;
+    isTalkFlowActive = false;
+    audioChunks = [];
+    talkBtn.classList.remove('recording');
+    talkBtn.querySelector('.btn-label').textContent = 'HOLD';
+    processingIndicator.classList.add('hidden');
 
     stopSpeaking();
 
@@ -981,6 +1057,12 @@ function setupLongPressA11yHints() {
 // --- Event Listeners ---
 startBtn.addEventListener('click', () => { unlockAudio(); toggleRunning(); });
 clearHistoryBtn.addEventListener('click', clearHistory);
+if (navBackBtn) {
+    navBackBtn.addEventListener('click', () => {
+        stopSpeaking();
+        navigateBack();
+    });
+}
 setupTalkButton();
 setupCustomModeVoiceButton();
 setupLongPressA11yHints();
