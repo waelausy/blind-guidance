@@ -1,0 +1,56 @@
+name: Deploy Blind Guidance to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Upload files to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          source: "backend/,frontend/,nginx.conf,blind-guidance.service"
+          target: "/home/ubuntu/blind-guidance/"
+          strip_components: 0
+
+      - name: Deploy on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+
+            echo "📦 Install Node dependencies..."
+            cd ~/blind-guidance/backend
+            npm install --omit=dev
+
+            echo "🔧 Configure Nginx..."
+            sudo cp ~/blind-guidance/nginx.conf /etc/nginx/sites-available/blind-guidance-6000
+            sudo ln -sf /etc/nginx/sites-available/blind-guidance-6000 /etc/nginx/sites-enabled/blind-guidance-6000
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            echo "🔧 Configure systemd service..."
+            sudo cp ~/blind-guidance/blind-guidance.service /etc/systemd/system/blind-guidance.service
+            sudo systemctl daemon-reload
+            sudo systemctl enable blind-guidance
+            sudo systemctl restart blind-guidance
+            sleep 2
+            sudo systemctl status blind-guidance --no-pager
+
+            echo "🧪 Smoke tests..."
+            curl -sf http://127.0.0.1:6111/api/health || echo "⚠️  /api/health not found (ok if not implemented)"
+            curl -sf http://127.0.0.1:6000/ -o /dev/null && echo "✅ Frontend OK on :6000" || echo "❌ Frontend KO"
+
+            echo "✅ Deployment complete!"
