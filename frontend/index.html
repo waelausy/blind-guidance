@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="description" content="AI-powered blind guidance assistant - real-time scene analysis and navigation help">
+  <meta name="theme-color" content="#0a0a1a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Blind Guide AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <!-- ResponsiveVoice: natural-sounding TTS (Google voices) -->
+  <script src="https://code.responsivevoice.org/responsivevoice.js?key=FREE"></script>
+</head>
+
+<body>
+
+  <!-- ====== LANGUAGE SELECTION SCREEN ====== -->
+  <div id="lang-screen">
+    <div id="lang-container">
+      <div id="lang-icon">🦯</div>
+      <h1 id="lang-title">Blind Guide AI</h1>
+      <p id="lang-subtitle">Choose your language</p>
+      <div id="lang-buttons">
+        <button class="lang-btn" data-lang="ar">
+          <span class="lang-flag">🇸🇦</span>
+          <span class="lang-name">العربية</span>
+        </button>
+        <button class="lang-btn" data-lang="fr">
+          <span class="lang-flag">🇫🇷</span>
+          <span class="lang-name">Français</span>
+        </button>
+        <button class="lang-btn" data-lang="en">
+          <span class="lang-flag">🇬🇧</span>
+          <span class="lang-name">English</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== MAIN APP ====== -->
+  <div id="app" class="hidden">
+    <!-- Camera Preview (background) -->
+    <div id="camera-layer">
+      <video id="camera-preview" autoplay playsinline muted></video>
+    </div>
+
+    <!-- Guidance Overlay -->
+    <div id="guidance-overlay">
+      <!-- Status Bar -->
+      <div id="status-bar">
+        <div id="status-indicator">
+          <span id="status-dot"></span>
+          <span id="status-text">Initializing...</span>
+        </div>
+        <div id="scan-counter">
+          <span id="scan-icon">📡</span>
+          <span id="scan-count">0</span>
+        </div>
+      </div>
+
+      <!-- Capture Duration Selector -->
+      <div id="duration-bar">
+        <span id="duration-label">⏱ Capture:</span>
+        <div id="duration-options">
+          <button class="dur-btn" data-dur="2">2s</button>
+          <button class="dur-btn active" data-dur="4">4s</button>
+          <button class="dur-btn" data-dur="8">8s</button>
+        </div>
+      </div>
+
+      <!-- Main Guidance Display -->
+      <div id="guidance-container">
+        <div id="alert-banner" class="hidden">
+          <span id="alert-icon">⚠️</span>
+          <span id="alert-text"></span>
+        </div>
+
+        <div id="guidance-text-wrapper">
+          <p id="guidance-text">Tap START to begin guidance</p>
+        </div>
+
+        <div id="processing-indicator" class="hidden">
+          <div class="pulse-ring"></div>
+          <span>Analyzing...</span>
+        </div>
+      </div>
+
+      <!-- Stats Panel -->
+      <div id="stats-panel">
+        <div class="stat-row">
+          <span id="stat-tokens">🔢 Tokens: 0</span>
+          <span class="divider">|</span>
+          <span id="stat-cost">💰 $0.00000</span>
+        </div>
+        <div class="stat-row sub">
+          <span id="stat-per-min">~$0.000/min</span>
+          <span class="divider">|</span>
+          <span id="stat-per-hour">~$0.00/hr</span>
+          <span class="divider">|</span>
+          <span id="stat-elapsed">⏱ 0:00</span>
+        </div>
+      </div>
+
+      <!-- History Panel -->
+      <div id="history-panel">
+        <div id="history-header">
+          <span>📋 Recent</span>
+          <button id="clear-history-btn" title="Clear history">✕</button>
+        </div>
+        <div id="history-list"></div>
+      </div>
+
+      <!-- Controls -->
+      <div id="controls">
+        <button id="start-btn" class="control-btn primary">
+          <span class="btn-icon">▶</span>
+          <span class="btn-label">START</span>
+        </button>
+        <button id="talk-btn" class="control-btn talk" disabled>
+          <span class="btn-icon">🎤</span>
+          <span class="btn-label">HOLD</span>
+        </button>
+        <button id="voice-toggle-btn" class="control-btn voice-toggle" title="Toggle voice">
+          <span class="btn-icon">🔊</span>
+          <span class="btn-label">VOICE</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
