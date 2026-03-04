@@ -76,6 +76,8 @@ let elapsedInterval = null;
 let audioRecorder = null;
 let audioChunks = [];
 let isTalking = false;
+let isTalkFlowActive = false;
+let currentAnalyzeController = null;
 
 // --- Voice Engine ---
 // Strategy: prefer Chrome/Android Google Neural voices (WaveNet quality)
@@ -92,6 +94,12 @@ const langToRVVoice = {
     en: 'UK English Female',
     fr: 'French Female',
     ar: 'Arabic Female',
+};
+
+const langToLocale = {
+    en: 'en-US',
+    fr: 'fr-FR',
+    ar: 'ar-SA',
 };
 
 // Voice enabled by default
@@ -151,31 +159,46 @@ if (passwordScreen) {
 function pickBestVoice(lang) {
     if (ttsVoices.length === 0) ttsVoices = window.speechSynthesis.getVoices();
     const hints = langToGoogleVoiceHint[lang] || langToGoogleVoiceHint.en;
+    const locale = langToLocale[lang] || langToLocale.en;
+    const langPrefix = locale.split('-')[0].toLowerCase();
+
+    const matchesLang = (voice) => {
+        const vLang = (voice.lang || '').toLowerCase();
+        return vLang === locale.toLowerCase() || vLang.startsWith(`${langPrefix}-`) || vLang === langPrefix;
+    };
+
     // Try exact voice name first (Google Neural)
     for (const hint of hints) {
         const v = ttsVoices.find(v => v.name === hint);
-        if (v) return v;
+        if (v && matchesLang(v)) return v;
     }
-    // Try partial name match (e.g. "Google" in name + lang prefix)
-    const langPrefix = lang === 'ar' ? 'ar' : lang === 'fr' ? 'fr' : 'en';
+
+    // Prefer exact locale match first (any provider)
+    const exactLocaleVoice = ttsVoices.find(v => (v.lang || '').toLowerCase() === locale.toLowerCase());
+    if (exactLocaleVoice) return exactLocaleVoice;
+
+    // Then Google voice in the target language
     const googleVoice = ttsVoices.find(v =>
-        v.name.toLowerCase().includes('google') && v.lang.startsWith(langPrefix)
+        v.name.toLowerCase().includes('google') && matchesLang(v)
     );
     if (googleVoice) return googleVoice;
+
     // Fallback: any voice for that language
-    return ttsVoices.find(v => v.lang.startsWith(langPrefix)) || null;
+    return ttsVoices.find(v => matchesLang(v)) || null;
 }
 
 function speak(text) {
     if (!voiceEnabled || !text) return;
     stopSpeaking();
 
+    const locale = langToLocale[selectedLang] || langToLocale.en;
     const voice = pickBestVoice(selectedLang);
 
-    // Prefer browser SpeechSynthesis if we found a Google voice (neural)
-    if (voice && voice.name.toLowerCase().includes('google')) {
+    // Prefer browser SpeechSynthesis when a language-matching voice is available
+    if (voice) {
         const utt = new SpeechSynthesisUtterance(text);
         utt.voice = voice;
+        utt.lang = locale;
         utt.rate = 1.05;
         utt.pitch = 1.0;
         utt.volume = 1;
@@ -186,12 +209,17 @@ function speak(text) {
     // ResponsiveVoice as second option
     if (typeof responsiveVoice !== 'undefined') {
         const rvVoice = langToRVVoice[selectedLang] || 'UK English Female';
-        responsiveVoice.speak(text, rvVoice, { rate: 1, pitch: 1, volume: 1 });
-        return;
+        try {
+            responsiveVoice.speak(text, rvVoice, { rate: 1, pitch: 1, volume: 1 });
+            return;
+        } catch (e) {
+            // Continue to browser fallback below
+        }
     }
 
     // Last resort: raw browser voice
     const utt = new SpeechSynthesisUtterance(text);
+    utt.lang = locale;
     if (voice) utt.voice = voice;
     utt.rate = 1.05;
     window.speechSynthesis.speak(utt);
@@ -287,10 +315,11 @@ function startRecording() {
 
     mediaRecorder.onstop = async () => {
         if (!isRunning) return;
+        if (isTalkFlowActive || isTalking) return;
         const blob = new Blob(recordedChunks, { type: selectedMime });
         recordedChunks = [];
         await analyzeClip(blob);
-        if (isRunning) {
+        if (isRunning && !isTalkFlowActive && !isTalking) {
             loopTimeout = setTimeout(() => {
                 if (isRunning) startRecording();
             }, 300);
@@ -308,10 +337,13 @@ function startRecording() {
 
 // --- Analyze Video Clip ---
 async function analyzeClip(blob) {
+    if (isTalkFlowActive || isTalking) return;
+
     processingIndicator.classList.remove('hidden');
     statusDot.className = 'analyzing';
     statusText.textContent = 'Scanning...';
 
+    currentAnalyzeController = new AbortController();
     try {
         const formData = new FormData();
         formData.append('video', blob, 'clip.webm');
@@ -320,11 +352,15 @@ async function analyzeClip(blob) {
         const response = await fetch(`${API_BASE}/api/analyze`, {
             method: 'POST',
             body: formData,
+            signal: currentAnalyzeController.signal,
         });
 
         if (!response.ok) throw new Error(`Server error: ${response.status}`);
 
         const data = await response.json();
+
+        // If user started talk while analysis was running, ignore this result.
+        if (isTalkFlowActive || isTalking) return;
 
         updateGuidance(data);
         if (data.stats) updateStats(data.stats);
@@ -337,6 +373,7 @@ async function analyzeClip(blob) {
         statusDot.className = 'active';
         statusText.textContent = `Active — scan #${scanNumber}`;
     } catch (err) {
+        if (err?.name === 'AbortError') return;
         console.error('Analysis error:', err);
         statusDot.className = 'error';
         statusText.textContent = 'Connection error';
@@ -345,6 +382,7 @@ async function analyzeClip(blob) {
                 'Connection lost. Stay alert. Retrying...';
         guidanceTextWrapper.className = 'warning';
     } finally {
+        currentAnalyzeController = null;
         processingIndicator.classList.add('hidden');
     }
 }
@@ -419,9 +457,14 @@ function setupTalkButton() {
 function startTalking(e) {
     e.preventDefault();
     if (!isRunning || isTalking) return;
+    isTalkFlowActive = true;
 
     // 1. Immediately stop any TTS speaking
     stopSpeaking();
+    if (currentAnalyzeController) {
+        currentAnalyzeController.abort();
+        currentAnalyzeController = null;
+    }
 
     // 2. Pause the video recording loop
     if (mediaRecorder && mediaRecorder.state === 'recording') {
@@ -535,6 +578,7 @@ async function sendTalkAudio(blob) {
         guidanceText.textContent = errMsg;
         speak(errMsg);
     } finally {
+        isTalkFlowActive = false;
         processingIndicator.classList.add('hidden');
         statusText.textContent = isRunning ? `Active — scan #${scanNumber}` : 'Paused';
         // Resume video scanning loop after talk
