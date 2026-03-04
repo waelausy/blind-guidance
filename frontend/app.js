@@ -348,6 +348,7 @@ async function analyzeClip(blob) {
         const formData = new FormData();
         formData.append('video', blob, 'clip.webm');
         formData.append('lang', selectedLang);
+        formData.append('clipDurationSec', String(Math.round(clipDurationMs / 1000)));
 
         const response = await fetch(`${API_BASE}/api/analyze`, {
             method: 'POST',

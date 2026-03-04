@@ -48,14 +48,46 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
+function resolveLengthProfile(clipDurationSecRaw) {
+    const clipDurationSec = Number.parseInt(String(clipDurationSecRaw ?? ''), 10);
+    if (clipDurationSec <= 2) {
+        return {
+            sentenceCount: 1,
+            maxWordsPerSentence: 9,
+            styleEn: 'ultra-brief',
+            styleFr: 'ultra-court',
+            styleAr: 'قصير جداً',
+        };
+    }
+    if (clipDurationSec <= 4) {
+        return {
+            sentenceCount: 2,
+            maxWordsPerSentence: 13,
+            styleEn: 'brief',
+            styleFr: 'court',
+            styleAr: 'قصير',
+        };
+    }
+    return {
+        sentenceCount: 2,
+        maxWordsPerSentence: 18,
+        styleEn: 'detailed but concise',
+        styleFr: 'détaillé mais concis',
+        styleAr: 'مفصل لكن مختصر',
+    };
+}
+
 // --- System Prompts per Language ---
-function getSystemPrompt(lang, contextStr) {
+function getSystemPrompt(lang, contextStr, clipDurationSecRaw) {
+    const lengthProfile = resolveLengthProfile(clipDurationSecRaw);
+    const { sentenceCount, maxWordsPerSentence, styleEn, styleFr, styleAr } = lengthProfile;
+
     const prompts = {
         en: `You are a navigation safety assistant for a BLIND person. Analyze this short video clip.
 
 OUTPUT FORMAT:
-- 2 short sentences (max 16 words each)
-- Calm, clear, actionable; not dramatic
+- ${sentenceCount} ${sentenceCount > 1 ? 'short sentences' : 'short sentence'} (max ${maxWordsPerSentence} words each)
+- ${styleEn}, calm, clear, actionable; not dramatic
 - Prioritize what the user must do now
 
 RULES:
@@ -77,8 +109,8 @@ Compare with context, mention important changes, then respond now:`,
         fr: `Tu es un assistant de sécurité et d'orientation pour une personne AVEUGLE. Analyse ce court clip vidéo.
 
 FORMAT DE SORTIE :
-- 2 phrases courtes (max 16 mots par phrase)
-- Ton calme, clair, actionnable; pas alarmiste
+- ${sentenceCount} ${sentenceCount > 1 ? 'phrases courtes' : 'phrase courte'} (max ${maxWordsPerSentence} mots par phrase)
+- Ton ${styleFr}, calme, clair, actionnable; pas alarmiste
 - Priorité à l'action immédiate utile
 
 RÈGLES :
@@ -100,8 +132,8 @@ Compare avec le contexte, signale les changements importants, puis réponds main
         ar: `أنت مساعد أمان وتوجيه لشخص كفيف. حلّل هذا المقطع القصير.
 
 صيغة الإخراج:
-- جملتان قصيرتان (حد أقصى 16 كلمة لكل جملة)
-- نبرة هادئة وواضحة وعملية، بدون تهويل
+- ${sentenceCount === 1 ? 'جملة قصيرة واحدة' : 'جملتان قصيرتان'} (حد أقصى ${maxWordsPerSentence} كلمة لكل جملة)
+- أسلوب ${styleAr} بنبرة هادئة وواضحة وعملية، بدون تهويل
 - ركّز على الإجراء المطلوب الآن
 
 القواعد:
@@ -194,6 +226,7 @@ app.post('/api/analyze', upload.single('video'), async (req, res) => {
     }
 
     const lang = req.body?.lang || 'en';
+    const clipDurationSec = req.body?.clipDurationSec;
 
     try {
         const videoPath = req.file.path;
@@ -201,7 +234,7 @@ app.post('/api/analyze', upload.single('video'), async (req, res) => {
         const base64Video = videoBytes.toString('base64');
 
         const contextStr = buildContextStr();
-        const prompt = getSystemPrompt(lang, contextStr);
+        const prompt = getSystemPrompt(lang, contextStr, clipDurationSec);
 
         const contents = [
             {
